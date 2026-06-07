@@ -1,0 +1,6 @@
+brother-ql
+numpy
+Pillow
+fastapi
+jinja2
+uvicorn[standard]
