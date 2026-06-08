@@ -17,7 +17,7 @@ from PIL import Image
 
 from .convertor import build_instructions, process_for_preview
 from .printer import BrotherPrinter
-from .frames import get_frame
+from .frames import get_frame, REGISTRY as _frame_registry
 from brother_ql.devicedependent import label_type_specs
 from brother_ql.labels import LabelsManager
 
@@ -102,7 +102,6 @@ class PrintRequest(BaseModel):
     image_data: str
     printer_ip: str
     label:      str = "29x90"
-    password:   Optional[str] = None
     frame_id:   Optional[str] = None
 
 
@@ -124,9 +123,8 @@ def decode_image(image_data: str) -> Image.Image:
 
 @app.get("/frames")
 def get_frames() -> JSONResponse:
-    from .frames import REGISTRY
     return JSONResponse(content=[
-        {"id": t.id, "name": t.name} for t in REGISTRY.values()
+        {"id": t.id, "name": t.name} for t in _frame_registry.values()
     ])
 
 
@@ -141,7 +139,7 @@ def get_labels() -> JSONResponse:
 
 
 @app.get("/printer/status")
-async def printer_status(printer_ip: str, password: Optional[str] = None) -> JSONResponse:
+async def printer_status(printer_ip: str) -> JSONResponse:
     if not printer_ip:
         return JSONResponse(content={"connected": False, "errors": []})
 
