@@ -4,6 +4,7 @@ import asyncio
 import base64
 import io
 import re
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -57,9 +58,11 @@ def match_label(
 # ── Background printer monitor ──────────────────────────────────────────────
 _monitor: dict = {"ip": None, "connected": False, "printer_status": None, "label": None}
 
+# ── Print history (last 8 prints, newest first) ─────────────────────────────
+_history: deque[dict] = deque(maxlen=8)
+
 
 async def _printer_monitor_loop() -> None:
-    """Query printer status via ESC i S every second and cache the result."""
     while True:
         ip = _monitor["ip"]
         if ip:
@@ -72,7 +75,6 @@ async def _printer_monitor_loop() -> None:
                 ps.get("media_width", 0) if ps else 0,
                 ps.get("media_length", 0) if ps else 0,
             ) if ps else None
-        # Poll faster when offline so reconnection is caught within ~1s
         await asyncio.sleep(0.3 if not _monitor["connected"] else 1.0)
 
 
@@ -92,6 +94,7 @@ jinja_env = Environment(
 )
 
 
+# ── Request models ──────────────────────────────────────────────────────────
 class PreviewRequest(BaseModel):
     image_data: str
     label:      str = "29x90"
@@ -105,6 +108,12 @@ class PrintRequest(BaseModel):
     frame_id:   Optional[str] = None
 
 
+class AutoPrintRequest(BaseModel):
+    image_data: str
+    frame_id:   Optional[str] = None
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
 def _apply_frame(image: Image.Image, frame_id: Optional[str]) -> Image.Image:
     if not frame_id:
         return image
@@ -121,6 +130,40 @@ def decode_image(image_data: str) -> Image.Image:
     return Image.open(io.BytesIO(base64.b64decode(match.group(1)))).convert("RGB")
 
 
+def _thumbnail_b64(image: Image.Image, size: int = 60) -> str:
+    thumb = image.copy()
+    thumb.thumbnail((size, size * 4), Image.LANCZOS)
+    buf = io.BytesIO()
+    thumb.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def _execute_print(
+    image: Image.Image, label: str, printer_ip: str,
+    frame_id: Optional[str] = None,
+) -> JSONResponse:
+    if label not in label_type_specs:
+        raise HTTPException(status_code=400, detail=f"Unknown label: {label}")
+    framed = _apply_frame(image, frame_id)
+    try:
+        instructions = build_instructions(framed, label)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Image conversion failed: {exc}")
+    try:
+        result = BrotherPrinter(printer_ip).send_instructions(instructions)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    if not result.get("instructions_sent", False):
+        raise HTTPException(status_code=502, detail="Failed to deliver instructions to printer")
+    _history.appendleft({
+        "thumbnail": _thumbnail_b64(framed),
+        "label":     label,
+        "frame_id":  frame_id,
+    })
+    return JSONResponse(content=result)
+
+
+# ── Routes ───────────────────────────────────────────────────────────────────
 @app.get("/frames")
 def get_frames() -> JSONResponse:
     return JSONResponse(content=[
@@ -138,18 +181,20 @@ def get_labels() -> JSONResponse:
     return JSONResponse(content=sorted(result, key=lambda x: x["id"]))
 
 
+@app.get("/history")
+def get_history() -> JSONResponse:
+    return JSONResponse(content=list(_history))
+
+
 @app.get("/printer/status")
 async def printer_status(printer_ip: str) -> JSONResponse:
     if not printer_ip:
         return JSONResponse(content={"connected": False, "errors": []})
-
-    # Register new IP — monitor picks it up on next cycle
     if _monitor["ip"] != printer_ip:
         _monitor["ip"] = printer_ip
         _monitor["connected"] = False
         _monitor["printer_status"] = None
         _monitor["label"] = None
-
     ps = _monitor.get("printer_status") or {}
     return JSONResponse(content={
         "connected":    _monitor["connected"],
@@ -169,9 +214,14 @@ def index() -> HTMLResponse:
     return HTMLResponse(content=template.render(default_printer_ip="192.168.1.139"))
 
 
+@app.get("/admin", response_class=HTMLResponse)
+def admin() -> HTMLResponse:
+    template = jinja_env.get_template("admin.html")
+    return HTMLResponse(content=template.render(default_printer_ip="192.168.1.139"))
+
+
 @app.post("/preview")
 async def preview_image(req: PreviewRequest) -> JSONResponse:
-    """Run the same dithering as /print and return the result as a PNG for WYSIWYG preview."""
     try:
         image = decode_image(req.image_data)
     except ValueError as exc:
@@ -186,26 +236,6 @@ async def preview_image(req: PreviewRequest) -> JSONResponse:
     return JSONResponse(content={"image_data": f"data:image/png;base64,{b64}"})
 
 
-def _execute_print(
-    image: Image.Image, label: str, printer_ip: str,
-    frame_id: Optional[str] = None,
-) -> JSONResponse:
-    if label not in label_type_specs:
-        raise HTTPException(status_code=400, detail=f"Unknown label: {label}")
-    image = _apply_frame(image, frame_id)
-    try:
-        instructions = build_instructions(image, label)
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Image conversion failed: {exc}")
-    try:
-        result = BrotherPrinter(printer_ip).send_instructions(instructions)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
-    if not result.get("instructions_sent", False):
-        raise HTTPException(status_code=502, detail="Failed to deliver instructions to printer")
-    return JSONResponse(content=result)
-
-
 @app.post("/print")
 def print_image(req: PrintRequest) -> JSONResponse:
     try:
@@ -213,11 +243,6 @@ def print_image(req: PrintRequest) -> JSONResponse:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return _execute_print(image, req.label, req.printer_ip, req.frame_id)
-
-
-class AutoPrintRequest(BaseModel):
-    image_data: str
-    frame_id:   Optional[str] = None
 
 
 @app.post("/print/auto")
