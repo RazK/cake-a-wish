@@ -8,82 +8,78 @@
 </head>
 <body>
   <div id="app">
-    <div class="site-header">
-      <h1>Cake-A-Wish</h1>
-      <span id="labelBadge" class="label-badge"></span>
+
+    <header class="site-header">
+      <h1>🎂 <span class="wordmark">Cake A Wish</span></h1>
+    </header>
+
+    <!-- Printer settings with WiFi / BT tabs -->
+    <details class="settings-panel" open>
+      <summary>
+        <span class="summary-title">🖨️ Printer</span>
+        <span id="printerStatus" class="printer-status checking" title="Click to recheck"></span>
+      </summary>
+      <div class="settings-body">
+        <div class="setting-row">
+          <span class="setting-label">IP</span>
+          <input id="printerIp" class="setting-input" type="text" value="{{ default_printer_ip }}" />
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Password</span>
+          <input id="password" class="setting-input" type="password" autocomplete="current-password" />
+        </div>
+        <div id="jobStatus" hidden></div>
+      </div>
+    </details>
+
+    <!-- Label selection -->
+    <details class="settings-panel" open>
+      <summary><span class="summary-title">🏷️ Label</span></summary>
+      <div class="settings-body">
+        <div id="carousel"></div>
+      </div>
+    </details>
+
+    <div id="canvasWrap">
+      <div id="previewContainer">
+        <canvas id="preview"></canvas>
+        <svg id="previewOverlay"></svg>
+      </div>
     </div>
 
-    <div id="viewer">
-      <video id="video" autoplay playsinline muted></video>
-      <img id="snapshot" alt="Captured photo" hidden />
-    </div>
-
-    <div id="previewWrap" hidden>
-      <p class="section-title">Label Preview</p>
-      <img id="labelPreview" alt="Label preview" />
-    </div>
+    <!-- Image settings -->
+    <details class="settings-panel" open>
+      <summary><span class="summary-title">🎨 Image</span></summary>
+      <div class="settings-body image-controls">
+        <div class="ctrl-row">
+          <div class="btn-group" data-setting="fitMode">
+            <button class="seg active" data-value="contain">Contain</button>
+            <button class="seg"        data-value="cover">Cover</button>
+            <button class="seg"        data-value="stretch">Stretch</button>
+          </div>
+          <div class="btn-group" data-setting="mirror">
+            <button class="seg"        data-value="off">No mirror</button>
+            <button class="seg active" data-value="on">Mirror</button>
+          </div>
+          <button id="rotateBtn" title="Rotate 90°">↻</button>
+        </div>
+      </div>
+    </details>
 
     <div id="controls">
-      <button id="capture">Capture</button>
-      <button id="uploadBtn" type="button">Upload image</button>
-      <button id="retake" hidden>Retake</button>
-      <button id="print" hidden>Print</button>
+      <button id="captureBtn">Capture</button>
+      <button id="quickPrintBtn" title="Capture &amp; print immediately" disabled>⚡</button>
+      <input id="loadInput" type="file" accept="image/*" hidden />
+      <button id="loadBtn" title="Load image file">📂</button>
+      <button id="saveBtn" title="Save image" disabled>💾</button>
+      <button id="printBtn" disabled>Print</button>
     </div>
 
-    <input id="imageUpload" type="file" accept="image/*" hidden />
-    <p id="uploadName" class="upload-name"></p>
+    <p id="status"></p>
 
-    <p id="status">Starting camera…</p>
-
-    <div class="settings-panel">
-      <div class="setting-row">
-        <span class="setting-label">Mirror</span>
-        <div class="btn-group" data-setting="mirror">
-          <button class="seg" data-value="off">Off</button>
-          <button class="seg active" data-value="on">On</button>
-        </div>
-      </div>
-      <div class="setting-row">
-        <span class="setting-label">B&amp;W</span>
-        <div class="btn-group" data-setting="bwMode">
-          <button class="seg active" data-value="dither">Dither</button>
-          <button class="seg" data-value="atkinson">Atkinson</button>
-          <button class="seg" data-value="threshold">Threshold</button>
-        </div>
-      </div>
-      <div class="setting-row">
-        <span class="setting-label">Fit</span>
-        <div class="btn-group" data-setting="fitMode">
-          <button class="seg active" data-value="contain">Contain</button>
-          <button class="seg" data-value="cover">Cover</button>
-          <button class="seg" data-value="stretch">Stretch</button>
-        </div>
-      </div>
-
-      <details id="advanced">
-        <summary>Advanced</summary>
-        <div class="advanced-grid">
-          <label>
-            Printer IP
-            <input id="printerIp" type="text" value="{{ default_printer_ip }}" />
-          </label>
-          <label>
-            Label
-            <input id="labelId" type="text" value="{{ default_label_id }}" />
-          </label>
-          <label>
-            Password
-            <input id="password" type="password" autocomplete="current-password" />
-          </label>
-          <label class="checkbox">
-            <input id="rotate" type="checkbox" checked />
-            Rotate for long axis
-          </label>
-        </div>
-      </details>
-    </div>
   </div>
 
+  <video id="video" autoplay playsinline muted></video>
   <script type="module" src="/static/app.js"></script>
 </body>
 </html>
