@@ -3,83 +3,106 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Cake-A-Wish</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <title>Cake A Wish — Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;900&display=swap" />
+  <link rel="stylesheet" href="/static/admin.css" />
 </head>
 <body>
-  <div id="app">
 
-    <header class="site-header">
-      <h1>🎂 <span class="wordmark">Cake A Wish</span></h1>
-    </header>
+  <!-- ── Header ── -->
+  <header class="site-header">
+    <h1>🎂 <span class="wordmark">Cake A Wish</span></h1>
+    <span id="printerStatus" class="status-pill checking" title="Click to recheck"></span>
+  </header>
 
-    <!-- Printer settings with WiFi / BT tabs -->
-    <details class="settings-panel" open>
-      <summary>
-        <span class="summary-title">🖨️ Printer</span>
-        <span id="printerStatus" class="printer-status checking" title="Click to recheck"></span>
-      </summary>
-      <div class="settings-body">
-        <div class="setting-row">
-          <span class="setting-label">IP</span>
-          <input id="printerIp" class="setting-input" type="text" value="{{ default_printer_ip }}" />
+  <main class="admin-layout">
+
+    <!-- ── Left: canvas ── -->
+    <section class="canvas-col">
+      <div id="canvasWrap">
+        <div id="previewContainer">
+          <canvas id="preview"></canvas>
+          <svg id="previewOverlay"></svg>
         </div>
-        <div class="setting-row">
-          <span class="setting-label">Password</span>
-          <input id="password" class="setting-input" type="password" autocomplete="current-password" />
-        </div>
-        <div id="jobStatus" hidden></div>
       </div>
-    </details>
+    </section>
 
-    <!-- Label selection -->
-    <details class="settings-panel" open>
-      <summary><span class="summary-title">🏷️ Label</span></summary>
-      <div class="settings-body">
-        <div id="carousel"></div>
+    <!-- ── Right: controls ── -->
+    <aside class="controls-col">
+
+      <!-- Template picker -->
+      <div class="card" id="templateCard">
+        <p class="card-label">Template</p>
+        <div id="templatePicker" class="template-picker"></div>
       </div>
-    </details>
 
-    <div id="canvasWrap">
-      <div id="previewContainer">
-        <canvas id="preview"></canvas>
-        <svg id="previewOverlay"></svg>
-      </div>
-    </div>
-
-    <!-- Image settings -->
-    <details class="settings-panel" open>
-      <summary><span class="summary-title">🎨 Image</span></summary>
-      <div class="settings-body image-controls">
-        <div class="ctrl-row">
-          <div class="btn-group" data-setting="fitMode">
-            <button class="seg active" data-value="contain">Contain</button>
-            <button class="seg"        data-value="cover">Cover</button>
-            <button class="seg"        data-value="stretch">Stretch</button>
+      <!-- Image controls -->
+      <div class="card">
+        <p class="card-label">Image</p>
+        <div class="control-rows">
+          <div class="control-row">
+            <span class="ctrl-label">Fit</span>
+            <div class="seg-group" data-setting="fitMode">
+              <button class="seg active" data-value="contain">Contain</button>
+              <button class="seg"        data-value="cover">Cover</button>
+              <button class="seg"        data-value="stretch">Stretch</button>
+            </div>
           </div>
-          <div class="btn-group" data-setting="mirror">
-            <button class="seg"        data-value="off">No mirror</button>
-            <button class="seg active" data-value="on">Mirror</button>
+          <div class="control-row">
+            <span class="ctrl-label">Mirror</span>
+            <div class="seg-group" data-setting="mirror">
+              <button class="seg"        data-value="off">Off</button>
+              <button class="seg active" data-value="on">On</button>
+            </div>
           </div>
-          <button id="rotateBtn" title="Rotate 90°">↻</button>
+          <div class="control-row">
+            <span class="ctrl-label">Rotate</span>
+            <button id="rotateBtn" class="icon-btn" title="Rotate 90°">↻ 90°</button>
+          </div>
+          <div class="control-row">
+            <span class="ctrl-label">Brightness</span>
+            <input id="brightnessSlider" type="range" min="-100" max="100" value="0" class="slider" />
+            <span id="brightnessVal" class="slider-val">0</span>
+          </div>
         </div>
       </div>
-    </details>
 
-    <div id="controls">
-      <button id="captureBtn">Capture</button>
-      <button id="quickPrintBtn" title="Capture &amp; print immediately" disabled>⚡</button>
-      <input id="loadInput" type="file" accept="image/*" hidden />
-      <button id="loadBtn" title="Load image file">📂</button>
-      <button id="saveBtn" title="Save image" disabled>💾</button>
-      <button id="printBtn" disabled>Print</button>
-    </div>
+    </aside>
+  </main>
 
-    <p id="status"></p>
-
+  <!-- ── Action bar ── -->
+  <div class="action-bar">
+    <button id="captureBtn"    class="btn btn-secondary">Capture</button>
+    <button id="quickPrintBtn" class="btn btn-icon" title="Capture &amp; print immediately" disabled>⚡</button>
+    <input  id="loadInput" type="file" accept="image/*" hidden />
+    <button id="loadBtn"       class="btn btn-icon" title="Load image">📂</button>
+    <button id="saveBtn"       class="btn btn-icon" title="Save image" disabled>💾</button>
+    <button id="printBtn"      class="btn btn-primary" disabled>Print</button>
   </div>
 
+  <!-- ── Gallery ── -->
+  <section class="gallery-section">
+    <p class="card-label">Gallery <span class="card-label-sub">last 8 prints</span></p>
+    <div id="gallery" class="gallery"></div>
+  </section>
+
+  <!-- ── Settings (collapsible) ── -->
+  <details class="settings-details">
+    <summary class="settings-summary">⚙ Settings</summary>
+    <div class="settings-body">
+      <div class="setting-row">
+        <label class="setting-label" for="printerIp">Printer IP</label>
+        <input id="printerIp" class="setting-input" type="text" value="{{ default_printer_ip }}" />
+      </div>
+      <div id="jobStatus" hidden></div>
+    </div>
+  </details>
+
+  <p id="statusBar" class="status-bar"></p>
+
   <video id="video" autoplay playsinline muted></video>
-  <script type="module" src="/static/app.js"></script>
+  <script type="module" src="/static/admin.js"></script>
 </body>
 </html>
