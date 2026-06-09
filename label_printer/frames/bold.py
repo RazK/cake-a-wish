@@ -7,11 +7,13 @@ class BoldFrame(FrameTemplate):
     Bold purple branding strip at bottom, full-bleed photo above.
     Designer replaces this with overlay.png + config.json.
     """
-    id   = "bold"
-    name = "Bold"
-
+    id          = "bold"
+    name        = "Bold"
     _STRIP_FRAC = 0.14
-    _PURPLE     = (124, 111, 247)   # #7C6FF7
+    _PURPLE     = (124, 111, 247)
+
+    photo_rect_frac = (0.0, 0.0, 1.0, 1.0 - _STRIP_FRAC)
+    strip_color     = _PURPLE
 
     def apply(self, photo: Image.Image) -> Image.Image:
         w, h   = photo.size

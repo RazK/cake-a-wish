@@ -7,8 +7,10 @@ class CleanFrame(FrameTemplate):
     Minimal polaroid. White background, thin border, small branding strip at bottom.
     Designer replaces this with overlay.png + config.json.
     """
-    id   = "clean"
-    name = "Clean"
+    id              = "clean"
+    name            = "Clean"
+    photo_rect_frac = (0.04, 0.04, 0.96, 0.88)
+    strip_color     = (248, 245, 255)
 
     def apply(self, photo: Image.Image) -> Image.Image:
         w, h = photo.size

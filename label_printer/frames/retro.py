@@ -7,8 +7,10 @@ class RetroFrame(FrameTemplate):
     Retro high-contrast: sepia-tinted photo, thick white border, stamp-style text.
     Designer replaces this with overlay.png + config.json.
     """
-    id   = "retro"
-    name = "Retro"
+    id              = "retro"
+    name            = "Retro"
+    photo_rect_frac = (0.05, 0.05, 0.95, 0.84)
+    strip_color     = (255, 252, 240)
 
     def apply(self, photo: Image.Image) -> Image.Image:
         w, h   = photo.size

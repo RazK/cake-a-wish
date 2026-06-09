@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel
@@ -130,12 +130,24 @@ def decode_image(image_data: str) -> Image.Image:
     return Image.open(io.BytesIO(base64.b64decode(match.group(1)))).convert("RGB")
 
 
-def _thumbnail_b64(image: Image.Image, size: int = 60) -> str:
+def _thumbnail_b64(image: Image.Image, max_w: int = 120) -> str:
+    """Small framed thumbnail for gallery display."""
     thumb = image.copy()
-    thumb.thumbnail((size, size * 4), Image.LANCZOS)
+    thumb.thumbnail((max_w, max_w * 4), Image.LANCZOS)
     buf = io.BytesIO()
     thumb.save(buf, format="PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def _medium_res_b64(image: Image.Image, max_w: int = 400) -> str:
+    """Medium-res raw (pre-frame) image for re-editing from gallery."""
+    img = image.copy()
+    w, h = img.size
+    if w > max_w:
+        img = img.resize((max_w, int(h * max_w / w)), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
 def _execute_print(
@@ -156,7 +168,8 @@ def _execute_print(
     if not result.get("instructions_sent", False):
         raise HTTPException(status_code=502, detail="Failed to deliver instructions to printer")
     _history.appendleft({
-        "thumbnail": _thumbnail_b64(framed),
+        "thumbnail": _thumbnail_b64(framed),   # framed — shown in gallery
+        "raw":       _medium_res_b64(image),    # pre-frame — for re-editing
         "label":     label,
         "frame_id":  frame_id,
     })
@@ -164,6 +177,18 @@ def _execute_print(
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
+@app.get("/frames/{frame_id}/overlay.png")
+def frame_overlay(frame_id: str, w: int = 400, h: int = 600) -> Response:
+    frame = get_frame(frame_id)
+    if frame is None:
+        raise HTTPException(status_code=404, detail=f"Unknown frame: {frame_id}")
+    overlay = frame.get_overlay(w, h)
+    buf = io.BytesIO()
+    overlay.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png",
+                    headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/frames")
 def get_frames() -> JSONResponse:
     return JSONResponse(content=[
