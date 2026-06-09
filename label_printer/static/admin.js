@@ -1,601 +1,461 @@
-// ── LabelRenderer ───────────────────────────────────────────────────────────
-class LabelRenderer {
-  #canvas; #ctx; #w = 0; #h = 0;
+/* ═══════════════════════════════════════════════════
+   Cake A Wish — Admin
+   ═══════════════════════════════════════════════════ */
 
-  constructor(canvas) {
-    this.#canvas = canvas;
-    this.#ctx    = canvas.getContext('2d', { willReadFrequently: true });
-  }
+// ── DOM refs ──────────────────────────────────────────
+const canvas      = document.getElementById('preview');
+const ctx         = canvas.getContext('2d');
+const pill        = document.getElementById('pill');
+const tplList     = document.getElementById('tpl-list');
+const brightness  = document.getElementById('brightness');
+const brightnessV = document.getElementById('brightness-val');
+const rotateBtn   = document.getElementById('rotate-btn');
+const captureBtn  = document.getElementById('capture-btn');
+const quickBtn    = document.getElementById('quick-btn');
+const loadInput   = document.getElementById('load-input');
+const loadBtn     = document.getElementById('load-btn');
+const saveBtn     = document.getElementById('save-btn');
+const printBtn    = document.getElementById('print-btn');
+const gallery     = document.getElementById('gallery');
+const printerIp   = document.getElementById('printer-ip');
+const statusBar   = document.getElementById('status-bar');
+const video       = document.getElementById('video');
 
-  setSize(w, h) {
-    this.#w = this.#canvas.width  = w;
-    this.#h = this.#canvas.height = h;
-  }
+// ── Offscreen canvas (feeds server preview) ───────────
+const offCanvas = document.createElement('canvas');
+const offCtx    = offCanvas.getContext('2d');
 
-  get width()  { return this.#w; }
-  get height() { return this.#h; }
+// ── State ─────────────────────────────────────────────
+const s = {
+  // label / printer
+  label:    null,
+  labelW:   696,
+  labelH:   1044,
+  printerOk: false,
 
-  render(source, { fitMode = 'contain', mirror = false, rotate = 0, brightness = 0 } = {}) {
-    if (!this.#w) return;
-    const [w, h, ctx] = [this.#w, this.#h, this.#ctx];
-    const sw = source.videoWidth  ?? source.naturalWidth  ?? source.width;
-    const sh = source.videoHeight ?? source.naturalHeight ?? source.height;
-    if (!sw || !sh) return;
+  // template
+  frameId:  null,
+  overlay:  null,   // HTMLImageElement for live compositing
 
-    ctx.save();
-    if (brightness !== 0) ctx.filter = `brightness(${1 + brightness / 100})`;
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, w, h);
-    ctx.translate(w / 2, h / 2);
-    if (rotate) ctx.rotate(rotate * Math.PI / 180);
-    if (mirror) ctx.scale(-1, 1);
-    const [fw, fh] = (rotate % 180 !== 0) ? [h, w] : [w, h];
-    if (fitMode === 'stretch') {
-      ctx.drawImage(source, -fw / 2, -fh / 2, fw, fh);
-    } else {
-      const scale = fitMode === 'cover' ? Math.max(fw/sw, fh/sh) : Math.min(fw/sw, fh/sh);
-      const dw = sw * scale, dh = sh * scale;
-      ctx.drawImage(source, -dw / 2, -dh / 2, dw, dh);
-    }
-    ctx.restore();
-  }
+  // image transform
+  fitMode:  'contain',
+  mirror:   true,
+  rotation: 0,
+  brightness: 0,
 
-  toDataURL() { return this.#canvas.toDataURL('image/png'); }
+  // capture / live
+  captured:    false,
+  capturedImg: null,  // ImageBitmap
 
-  async loadImage(dataUrl) {
-    return new Promise(resolve => {
-      const img = new Image();
-      img.onload  = () => { this.#ctx.drawImage(img, 0, 0, this.#w, this.#h); resolve(); };
-      img.onerror = resolve;
-      img.src = dataUrl;
-    });
-  }
-}
+  // server preview anti-flicker
+  hasServerPreview: false,
+  previewKey:       null,
+  previewSeq:       0,
 
-// ── DOM refs ─────────────────────────────────────────────────────────────────
-const video            = document.getElementById('video');
-const canvas           = document.getElementById('preview');
-const previewOverlay   = document.getElementById('previewOverlay');
-const canvasWrap       = document.getElementById('canvasWrap');
-const captureBtn       = document.getElementById('captureBtn');
-const printBtn         = document.getElementById('printBtn');
-const quickPrintBtn    = document.getElementById('quickPrintBtn');
-const saveBtn          = document.getElementById('saveBtn');
-const loadBtn          = document.getElementById('loadBtn');
-const loadInput        = document.getElementById('loadInput');
-const statusBar        = document.getElementById('statusBar');
-const printerStatusEl  = document.getElementById('printerStatus');
-const jobStatusEl      = document.getElementById('jobStatus');
-const templatePicker   = document.getElementById('templatePicker');
-const galleryEl        = document.getElementById('gallery');
-const brightnessSlider = document.getElementById('brightnessSlider');
-const brightnessVal    = document.getElementById('brightnessVal');
+  // camera
+  cameraReady: false,
+  liveTimer:   null,
+};
 
-// ── Renderers ────────────────────────────────────────────────────────────────
-const renderer    = new LabelRenderer(canvas);
-const _offCanvas  = document.createElement('canvas');
-const _offRenderer = new LabelRenderer(_offCanvas);
-
-// ── State ────────────────────────────────────────────────────────────────────
-const cfg = { fitMode: 'contain', mirror: 'on' };
-
-let activeLabel      = null;
-let labelHeight      = 0;   // 0 = continuous
-let activeFrame      = null;
-let templateOverlayImg = null;  // HTMLImageElement for live compositing
-
-let captured            = false;
-let capturedSrc         = null;
-let capturedDataUrl     = null;
-let _hasServerPreview   = false;  // true once server preview loaded for current capture
-let _captureSeq         = 0;
-let _previewCompositionKey = null;
-
-let cameraReady      = false;
-let liveTimer        = null;
-let isPrinting       = false;
-let rotation         = 0;
-let brightness       = 0;
-let previewToken     = 0;
-
-let lastPrinterLabel = null;
-let _knownLabels     = {};
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function setStatus(msg, type = '') {
+// ── Helpers ───────────────────────────────────────────
+function setStatus(msg, cls) {
   statusBar.textContent = msg;
-  statusBar.className   = 'status-bar' + (type ? ` ${type}` : '');
+  statusBar.className   = cls || '';
 }
 
-function setJobStatus(msg, type = '') {
-  if (!msg) { jobStatusEl.hidden = true; return; }
-  jobStatusEl.textContent = msg;
-  jobStatusEl.className   = type;
-  jobStatusEl.hidden      = false;
-}
-
-function printerIp() {
-  return document.getElementById('printerIp').value.trim();
+function setPill(label, cls) {
+  pill.textContent = label;
+  pill.className   = `pill ${cls}`;
 }
 
 function updateButtons() {
-  const canPrint = captured && activeLabel && activeLabel !== '__other__';
-  printBtn.disabled      = !canPrint;
-  saveBtn.disabled       = !captured;
-  quickPrintBtn.disabled = captured || !cameraReady || !activeLabel || activeLabel === '__other__';
+  const hasCap = s.captured;
+  captureBtn.textContent = hasCap ? 'Retake' : 'Capture';
+  captureBtn.classList.toggle('retake', hasCap);
+  quickBtn.disabled = !s.cameraReady;
+  saveBtn.disabled  = !hasCap;
+  printBtn.disabled = !hasCap;
 }
 
-// ── Canvas sizing ────────────────────────────────────────────────────────────
-function constrainCanvas() {
-  const maxH = canvasWrap.offsetHeight;
-  const maxW = canvasWrap.offsetWidth;
-  if (maxH > 0) canvas.style.maxHeight = maxH + 'px';
-  if (maxW > 0) canvas.style.maxWidth  = maxW + 'px';
+// ── Canvas sizing ─────────────────────────────────────
+function applyLabel(w, h) {
+  s.labelW = w;
+  s.labelH = h;
+  canvas.width     = w;
+  canvas.height    = h;
+  offCanvas.width  = w;
+  offCanvas.height = h;
 }
 
-function applyLabelSize(w, h) {
-  labelHeight = h;
-  const isCont = h === 0;
-  const [cw, ch] = isCont ? [w, Math.round(w * 1.5)] : [w, h];
-  renderer.setSize(cw, ch);
-  _offRenderer.setSize(cw, ch);
-  constrainCanvas();
-  updatePreviewOverlay();
-  loadTemplateOverlay();
-  render();
-}
+// ── Draw helpers ──────────────────────────────────────
+function drawSource(c, src) {
+  const cw = c.canvas.width;
+  const ch = c.canvas.height;
+  const sw = src.videoWidth  || src.naturalWidth  || src.width;
+  const sh = src.videoHeight || src.naturalHeight || src.height;
 
-// ── Template overlay (for live compositing) ──────────────────────────────────
-async function loadTemplateOverlay() {
-  if (!activeFrame || !renderer.width || !renderer.height) return;
-  const url = `/frames/${encodeURIComponent(activeFrame)}/overlay.png?w=${renderer.width}&h=${renderer.height}`;
-  try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    templateOverlayImg = img;
-  } catch {
-    templateOverlayImg = null;
+  c.save();
+  c.translate(cw / 2, ch / 2);
+  if (s.rotation) c.rotate(s.rotation * Math.PI / 180);
+  if (s.mirror)   c.scale(-1, 1);
+
+  let dw, dh;
+  if (s.fitMode === 'stretch') {
+    dw = cw; dh = ch;
+  } else if (s.fitMode === 'cover') {
+    const scale = Math.max(cw / sw, ch / sh);
+    dw = sw * scale; dh = sh * scale;
+  } else {
+    const scale = Math.min(cw / sw, ch / sh);
+    dw = sw * scale; dh = sh * scale;
+  }
+
+  c.drawImage(src, -dw / 2, -dh / 2, dw, dh);
+  c.restore();
+
+  if (s.brightness !== 0) {
+    const bv = s.brightness * 2.55;
+    const id = c.getImageData(0, 0, cw, ch);
+    const d  = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i]   = Math.max(0, Math.min(255, d[i]   + bv));
+      d[i+1] = Math.max(0, Math.min(255, d[i+1] + bv));
+      d[i+2] = Math.max(0, Math.min(255, d[i+2] + bv));
+    }
+    c.putImageData(id, 0, 0);
   }
 }
 
-function drawOverlayOnCanvas() {
-  if (!templateOverlayImg || !templateOverlayImg.complete) return;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(templateOverlayImg, 0, 0, canvas.width, canvas.height);
+function drawOverlay() {
+  if (!s.overlay) return;
+  ctx.drawImage(s.overlay, 0, 0, s.labelW, s.labelH);
 }
 
-// ── Server preview ────────────────────────────────────────────────────────────
-async function fetchServerPreview() {
-  if (!capturedDataUrl || !activeLabel || activeLabel === '__other__') return;
-  const token = ++previewToken;
+// ── Render ────────────────────────────────────────────
+function render() {
+  if (!s.labelW) return;
+
+  if (!s.captured) {
+    if (!s.cameraReady) return;
+    drawSource(ctx, video);
+    drawOverlay();
+    return;
+  }
+
+  const key = `${s.frameId}|${s.fitMode}|${s.mirror}|${s.rotation}|${s.brightness}`;
+  if (key === s.previewKey) return;
+
+  s.previewKey = key;
+  s.hasServerPreview = false;
+
+  // Show local preview immediately while waiting for server
+  drawSource(ctx, s.capturedImg);
+  drawOverlay();
+
+  // Build offscreen and request server preview
+  drawSource(offCtx, s.capturedImg);
+  fetchServerPreview(offCanvas.toDataURL('image/png'));
+}
+
+async function fetchServerPreview(dataUrl) {
+  const seq = ++s.previewSeq;
   try {
     const res = await fetch('/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_data: capturedDataUrl, label: activeLabel, frame_id: activeFrame }),
+      body: JSON.stringify({ image_data: dataUrl, label: s.label || '62red', frame_id: s.frameId }),
     });
-    if (token !== previewToken || !res.ok) return;
-    const { image_data } = await res.json();
-    if (token !== previewToken) return;
-    await renderer.loadImage(image_data);
-    _hasServerPreview = true;
-  } catch { /* ignore */ }
+    if (!res.ok) return;
+    const data = await res.json();
+    if (seq !== s.previewSeq) return; // stale — newer request in flight
+
+    const img = new Image();
+    img.onload = () => {
+      if (seq !== s.previewSeq) return;
+      ctx.drawImage(img, 0, 0, s.labelW, s.labelH);
+      s.hasServerPreview = true;
+    };
+    img.src = data.image_data;
+  } catch { /* keep local preview */ }
 }
 
-// ── Render loop ───────────────────────────────────────────────────────────────
-// Key insight: in captured mode, once a server preview is loaded, never overwrite
-// it from source. Only the offscreen canvas gets redrawn (to produce new capturedDataUrl
-// for the next server round-trip). This eliminates all flickering from brightness/
-// template/setting changes.
-function render() {
-  const src = captured ? capturedSrc : (cameraReady ? video : null);
-  if (!src || !activeLabel) return;
-
-  if (!captured) {
-    // Live mode: draw video + overlay every tick
-    renderer.render(src, { fitMode: cfg.fitMode, mirror: cfg.mirror === 'on', rotate: rotation, brightness });
-    drawOverlayOnCanvas();
-  } else {
-    // Captured mode: compute composition key; only act when something changed
-    const key = `${_captureSeq}|${activeLabel}|${activeFrame}|${cfg.fitMode}|${cfg.mirror}|${rotation}|${brightness}`;
-    if (key !== _previewCompositionKey) {
-      _previewCompositionKey = key;
-      // Draw source to main canvas only before first server preview arrives
-      if (!_hasServerPreview) {
-        renderer.render(src, { fitMode: cfg.fitMode, mirror: cfg.mirror === 'on', rotate: rotation, brightness });
-      }
-      // Always update offscreen canvas → new capturedDataUrl → server preview
-      _offRenderer.render(src, { fitMode: cfg.fitMode, mirror: cfg.mirror === 'on', rotate: rotation, brightness });
-      capturedDataUrl = _offRenderer.toDataURL();
-      fetchServerPreview();
-    }
-  }
-}
-
-const startLive = () => { if (!liveTimer && cameraReady) liveTimer = setInterval(render, 100); };
-const stopLive  = () => { clearInterval(liveTimer); liveTimer = null; };
-
-// ── Segmented controls ────────────────────────────────────────────────────────
-document.querySelectorAll('.seg-group[data-setting]').forEach(group => {
-  group.addEventListener('click', e => {
-    const btn = e.target.closest('.seg');
-    if (!btn) return;
-    group.querySelectorAll('.seg').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    cfg[group.dataset.setting] = btn.dataset.value;
-    render();
-  });
-});
-
-document.getElementById('rotateBtn').addEventListener('click', () => {
-  rotation = (rotation + 90) % 360;
-  render();
-});
-
-brightnessSlider.addEventListener('input', () => {
-  brightness = Number(brightnessSlider.value);
-  brightnessVal.textContent = brightness > 0 ? `+${brightness}` : String(brightness);
-  render();
-});
-
-// ── Preview overlay (cut-line indicator) ──────────────────────────────────────
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-function updatePreviewOverlay() {
-  const w = canvas.offsetWidth;
-  const h = canvas.offsetHeight;
-  if (!w || !h) return;
-  previewOverlay.setAttribute('viewBox', `0 0 ${w} ${h}`);
-  previewOverlay.innerHTML = '';
-  if (labelHeight !== 0) return;  // only for continuous tape
-
-  const z = 10;
-  let d = `M 0 ${h}`;
-  for (let x = 0; x < w; x += z)
-    d += ` L ${Math.min(x + z/2, w)} ${h - z} L ${Math.min(x + z, w)} ${h}`;
-  d += ` L ${w} ${h + z*2} L 0 ${h + z*2} Z`;
-
-  const path = document.createElementNS(SVG_NS, 'path');
-  path.setAttribute('d', d);
-  path.setAttribute('fill', 'rgba(124,111,247,0.2)');
-  previewOverlay.appendChild(path);
-
-  const ar = document.createElementNS(SVG_NS, 'text');
-  ar.setAttribute('x', w / 2);
-  ar.setAttribute('y', h - Math.round(Math.min(h * 0.04, 14)));
-  ar.setAttribute('dominant-baseline', 'middle');
-  ar.setAttribute('text-anchor', 'middle');
-  ar.setAttribute('font-size', Math.round(Math.min(w * 0.15, 20)));
-  ar.setAttribute('fill', 'rgba(124,111,247,0.4)');
-  ar.textContent = '↓';
-  previewOverlay.appendChild(ar);
-}
-
-new ResizeObserver(() => { constrainCanvas(); updatePreviewOverlay(); }).observe(canvasWrap);
-
-// ── Labels ────────────────────────────────────────────────────────────────────
-async function loadLabels() {
+// ── Template overlay (live compositing) ──────────────
+async function loadOverlay(frameId) {
+  s.overlay = null;
+  if (!frameId) return;
   try {
-    const list = await fetch('/labels').then(r => r.json());
-    _knownLabels = Object.fromEntries(list.map(l => [l.id, l]));
-    if (list.length) selectLabel(list[0].id);
-  } catch (err) {
-    setStatus(`Labels failed: ${err.message}`, 'error');
-  }
+    const img = new Image();
+    img.src   = `/frames/${frameId}/overlay.png?w=${s.labelW}&h=${s.labelH}&t=${Date.now()}`;
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+    s.overlay = img;
+  } catch { /* no overlay */ }
 }
 
-function selectLabel(id) {
-  const lbl = _knownLabels[id];
-  if (!lbl) return;
-  activeLabel = id;
-  applyLabelSize(lbl.width, lbl.height);
-  updateButtons();
-}
-
-// ── Templates ─────────────────────────────────────────────────────────────────
-async function loadTemplates() {
-  try {
-    const frames = await fetch('/frames').then(r => r.json());
-    templatePicker.innerHTML = '';
-    frames.forEach((f, i) => {
-      const btn = document.createElement('button');
-      btn.className  = 'tpl-btn' + (i === 0 ? ' active' : '');
-      btn.dataset.id = f.id;
-      // Placeholder thumb — just the template name initial for now
-      btn.innerHTML = `<span class="tpl-thumb" style="background:var(--primary-ghost);display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:var(--primary);">${f.name[0]}</span>
-                       <span class="tpl-name">${f.name}</span>`;
-      btn.addEventListener('click', () => selectTemplate(f.id));
-      templatePicker.appendChild(btn);
-    });
-    if (frames.length) {
-      activeFrame = frames[0].id;
-      loadTemplateOverlay();
-    }
-  } catch (err) {
-    setStatus(`Templates failed: ${err.message}`, 'error');
-  }
-}
-
-function selectTemplate(id) {
-  activeFrame = id;
-  templatePicker.querySelectorAll('.tpl-btn').forEach(btn =>
-    btn.classList.toggle('active', btn.dataset.id === id)
-  );
-  // Reload overlay for live compositing
-  loadTemplateOverlay().then(() => {
-    if (!captured) render();
-  });
-  // In captured mode: reset composition key to force new server preview
-  // (don't touch main canvas — keep current server preview showing until new one arrives)
-  if (captured) {
-    _previewCompositionKey = '__stale__';
-    render();
-  }
-}
-
-// ── Gallery ───────────────────────────────────────────────────────────────────
-async function refreshGallery() {
-  try {
-    const items = await fetch('/history').then(r => r.json());
-    galleryEl.innerHTML = '';
-    items.forEach(item => {
-      const div = document.createElement('div');
-      div.className = 'gallery-item';
-      div.title = `${item.label}${item.frame_id ? ' · ' + item.frame_id : ''} — click to re-edit`;
-      div.innerHTML = `<img src="${item.thumbnail}" alt="print" />
-                       <div class="load-overlay">✏️</div>`;
-      div.addEventListener('click', () => loadGalleryItem(item));
-      galleryEl.appendChild(div);
-    });
-  } catch { /* gallery is non-critical */ }
-}
-
-function loadGalleryItem(item) {
-  // Load raw (pre-frame) image back into preview mode for re-editing
-  const img = new Image();
-  img.onload = () => {
-    capturedSrc        = document.createElement('canvas');
-    capturedSrc.width  = img.naturalWidth;
-    capturedSrc.height = img.naturalHeight;
-    capturedSrc.getContext('2d').drawImage(img, 0, 0);
-    stopLive();
-    captured          = true;
-    _hasServerPreview = false;
-    rotation          = 0;
-    brightnessSlider.value    = 0;
-    brightness                = 0;
-    brightnessVal.textContent = '0';
-    _captureSeq++;
-    _previewCompositionKey = null;
-    captureBtn.textContent = 'Retake';
-    captureBtn.classList.add('retake');
-    updateButtons();
-    render();
-    setStatus('Loaded from gallery — adjust and print', 'ok');
-    setTimeout(() => setStatus(''), 2500);
-  };
-  img.src = item.raw;
-}
-
-// ── Camera ────────────────────────────────────────────────────────────────────
+// ── Camera ────────────────────────────────────────────
 async function startCamera() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
     video.srcObject = stream;
-    video.addEventListener('loadedmetadata', () => {
-      cameraReady = true;
-      startLive();
-      updateButtons();
-    }, { once: true });
-  } catch {
-    captureBtn.disabled = true;
-    setStatus('Camera unavailable.', 'error');
+    await video.play();
+    s.cameraReady = true;
+    updateButtons();
+    s.liveTimer = setInterval(render, 80);
+  } catch (e) {
+    setStatus('Camera unavailable: ' + e.message, 'err');
   }
 }
 
-// ── Capture / Retake ──────────────────────────────────────────────────────────
-captureBtn.addEventListener('click', () => {
-  if (captured) {
+function stopLive() {
+  clearInterval(s.liveTimer);
+  s.liveTimer = null;
+}
+
+// ── Capture ───────────────────────────────────────────
+async function doCapture() {
+  if (s.captured) {
     // Retake
-    captured              = false;
-    capturedSrc           = null;
-    capturedDataUrl       = null;
-    _hasServerPreview     = false;
-    _previewCompositionKey = null;
-    rotation              = 0;
-    brightnessSlider.value     = 0;
-    brightness                 = 0;
-    brightnessVal.textContent  = '0';
-    ++previewToken;
-    captureBtn.textContent = 'Capture';
-    captureBtn.classList.remove('retake');
+    s.captured         = false;
+    s.capturedImg      = null;
+    s.previewKey       = null;
+    s.hasServerPreview = false;
+    s.previewSeq++;
     updateButtons();
-    startLive();
-    setStatus('');
-  } else {
-    // Capture
-    if (!cameraReady) return;
-    stopLive();
-    capturedSrc        = document.createElement('canvas');
-    capturedSrc.width  = video.videoWidth;
-    capturedSrc.height = video.videoHeight;
-    capturedSrc.getContext('2d').drawImage(video, 0, 0);
-    captured              = true;
-    _hasServerPreview     = false;
-    _previewCompositionKey = null;
-    _captureSeq++;
-    captureBtn.textContent = 'Retake';
-    captureBtn.classList.add('retake');
-    updateButtons();
-    render();
+    s.liveTimer = setInterval(render, 80);
+    return;
   }
-});
+  stopLive();
+  s.capturedImg = await createImageBitmap(video);
+  s.captured    = true;
+  s.previewKey  = null;
+  updateButtons();
+  render();
+}
 
-// ── Quick Print ───────────────────────────────────────────────────────────────
-quickPrintBtn.addEventListener('click', async () => {
-  if (captured || !cameraReady || isPrinting) return;
-  _offRenderer.render(video, { fitMode: cfg.fitMode, mirror: cfg.mirror === 'on', rotate: rotation, brightness });
-  const dataUrl = _offRenderer.toDataURL();
-  isPrinting = true;
-  quickPrintBtn.disabled = true;
-  captureBtn.disabled    = true;
-  const prev = quickPrintBtn.textContent;
-  quickPrintBtn.textContent = '…';
-  try {
-    const res = await fetch('/print/auto', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_data: dataUrl, frame_id: activeFrame }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Print failed');
-    quickPrintBtn.textContent = '✓';
-    setTimeout(() => { quickPrintBtn.textContent = prev; }, 2000);
-    refreshGallery();
-  } catch (err) {
-    quickPrintBtn.textContent = prev;
-    setStatus(`Error: ${err.message}`, 'error');
-  } finally {
-    isPrinting          = false;
-    captureBtn.disabled = false;
-    updateButtons();
-  }
-});
+// ── Load from file / dataUrl ──────────────────────────
+function loadFromBitmap(bmp) {
+  stopLive();
+  s.capturedImg      = bmp;
+  s.captured         = true;
+  s.previewKey       = null;
+  s.hasServerPreview = false;
+  s.previewSeq++;
+  updateButtons();
+  render();
+}
 
-// ── Save ──────────────────────────────────────────────────────────────────────
-saveBtn.addEventListener('click', () => {
-  if (!captured) return;
-  const a = document.createElement('a');
-  a.href     = canvas.toDataURL('image/png');
-  a.download = 'cake-a-wish.png';
-  a.click();
-});
-
-// ── Load ──────────────────────────────────────────────────────────────────────
-loadBtn.addEventListener('click', () => loadInput.click());
-loadInput.addEventListener('change', () => {
-  const file = loadInput.files[0];
-  if (!file) return;
-  loadInput.value = '';
+function loadFromFile(file) {
   const reader = new FileReader();
   reader.onload = e => {
     const img = new Image();
-    img.onload = () => {
-      capturedSrc        = document.createElement('canvas');
-      capturedSrc.width  = img.naturalWidth;
-      capturedSrc.height = img.naturalHeight;
-      capturedSrc.getContext('2d').drawImage(img, 0, 0);
-      stopLive();
-      captured              = true;
-      _hasServerPreview     = false;
-      _previewCompositionKey = null;
-      _captureSeq++;
-      captureBtn.textContent = 'Retake';
-      captureBtn.classList.add('retake');
-      updateButtons();
-      render();
-    };
+    img.onload = async () => loadFromBitmap(await createImageBitmap(img));
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
-});
+}
 
-// ── Print ─────────────────────────────────────────────────────────────────────
-printBtn.addEventListener('click', async () => {
-  const ip = printerIp();
-  if (!ip) { setStatus('Set Printer IP in Settings.', 'error'); return; }
-  if (!activeLabel || activeLabel === '__other__') {
-    setStatus('No recognized label — cannot print.', 'error'); return;
-  }
-  isPrinting = true;
-  printBtn.disabled   = true;
-  captureBtn.disabled = true;
-  printBtn.classList.add('printing');
-  const prev = printBtn.textContent;
-  printBtn.textContent = 'Printing…';
-  setStatus('');
+function loadFromDataUrl(dataUrl) {
+  const img = new Image();
+  img.onload = async () => loadFromBitmap(await createImageBitmap(img));
+  img.src = dataUrl;
+}
+
+// ── Save ──────────────────────────────────────────────
+function doSave() {
+  const a    = document.createElement('a');
+  a.download = `cakeawish-${Date.now()}.png`;
+  a.href     = canvas.toDataURL('image/png');
+  a.click();
+}
+
+// ── Print ─────────────────────────────────────────────
+async function doPrint() {
+  if (!s.capturedImg) return;
+  drawSource(offCtx, s.capturedImg);
+  const dataUrl = offCanvas.toDataURL('image/png');
+  const ip      = printerIp.value.trim();
+  const label   = s.label || '62red';
+
+  printBtn.disabled = true;
+  printBtn.classList.add('busy');
+  setStatus('Sending to printer…');
+
   try {
-    const res = await fetch('/print', {
-      method:  'POST',
+    const res  = await fetch('/print', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image_data: capturedDataUrl,
-        printer_ip: ip,
-        label:      activeLabel,
-        frame_id:   activeFrame,
-      }),
+      body: JSON.stringify({ image_data: dataUrl, printer_ip: ip, label, frame_id: s.frameId }),
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Print failed');
-    printBtn.textContent = 'Printed ✓';
-    setTimeout(() => { printBtn.textContent = prev; }, 3000);
-    refreshGallery();
-  } catch (err) {
-    printBtn.textContent = prev;
-    setStatus(`Error: ${err.message}`, 'error');
-  } finally {
-    printBtn.classList.remove('printing');
-    isPrinting          = false;
-    printBtn.disabled   = false;
-    captureBtn.disabled = false;
-  }
-});
-
-// ── Printer status — passive indicator, no click ──────────────────────────────
-async function checkPrinterStatus(showSpinner = false) {
-  const ip = printerIp();
-  if (!ip) {
-    printerStatusEl.className   = 'status-pill offline';
-    printerStatusEl.textContent = 'No printer';
-    return;
-  }
-  if (showSpinner) {
-    printerStatusEl.className   = 'status-pill checking';
-    printerStatusEl.textContent = 'Checking…';
-  }
-  try {
-    const data = await fetch(`/printer/status?printer_ip=${encodeURIComponent(ip)}`).then(r => r.json());
-
-    if (data.connected) {
-      if (data.errors?.length) {
-        printerStatusEl.className   = 'status-pill error';
-        printerStatusEl.textContent = data.errors[0];
-      } else if (data.phase_type === 'Printing state') {
-        printerStatusEl.className   = 'status-pill printing';
-        printerStatusEl.textContent = 'Printing…';
-      } else {
-        const labelTxt = data.label ? ` · ${data.label}` : '';
-        printerStatusEl.className   = 'status-pill online';
-        printerStatusEl.textContent = `Ready${labelTxt}`;
-      }
-
-      if (data.label && data.label !== lastPrinterLabel) {
-        lastPrinterLabel = data.label;
-        selectLabel(data.label);
-      } else if (!data.label && data.media_type && !data.media_type.includes('No media')) {
-        activeLabel = '__other__';
-        updateButtons();
-        setStatus(`Unrecognized roll (${data.media_width}mm) — cannot print`, 'error');
-      }
+    const data = await res.json();
+    if (!res.ok) {
+      setStatus('Print failed: ' + (data.detail || res.statusText), 'err');
     } else {
-      printerStatusEl.className   = 'status-pill offline';
-      printerStatusEl.textContent = 'Offline';
+      setStatus('Printed!', 'ok');
+      loadGallery();
     }
-  } catch {
-    printerStatusEl.className   = 'status-pill offline';
-    printerStatusEl.textContent = 'Offline';
+  } catch (e) {
+    setStatus('Network error: ' + e.message, 'err');
+  } finally {
+    printBtn.classList.remove('busy');
+    updateButtons();
   }
 }
 
-document.getElementById('printerIp').addEventListener('change', () => checkPrinterStatus(true));
-setInterval(() => { if (!isPrinting) checkPrinterStatus(); }, 1000);
+async function doQuickPrint() {
+  if (!s.cameraReady) return;
+  stopLive();
+  s.capturedImg = await createImageBitmap(video);
+  s.captured    = true;
+  s.previewKey  = null;
+  s.hasServerPreview = false;
+  s.previewSeq++;
+  updateButtons();
+  render();
+  doPrint();
+}
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-(async () => {
-  await loadLabels();
+// ── Gallery ───────────────────────────────────────────
+async function loadGallery() {
+  try {
+    const res  = await fetch('/history');
+    const data = await res.json();
+    gallery.innerHTML = '';
+    data.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'g-item';
+      el.innerHTML = `<img src="${item.thumbnail}" alt="print"><div class="g-hover">✏️</div>`;
+      el.addEventListener('click', () => loadFromDataUrl(item.raw));
+      gallery.appendChild(el);
+    });
+  } catch { /* ignore */ }
+}
+
+// ── Templates ─────────────────────────────────────────
+async function loadTemplates() {
+  try {
+    const res  = await fetch('/frames');
+    const tpls = await res.json();
+    const all  = [{ id: null, name: 'None' }, ...tpls];
+
+    all.forEach(t => {
+      const btn  = document.createElement('button');
+      btn.className   = 'tpl-btn' + (t.id === s.frameId ? ' active' : '');
+      btn.dataset.fid = t.id ?? '';
+
+      const icon = document.createElement('div');
+      icon.className   = 'tpl-icon';
+      icon.textContent = t.id === null ? '⊘' : t.name[0];
+      btn.appendChild(icon);
+
+      const name = document.createElement('span');
+      name.className   = 'tpl-name';
+      name.textContent = t.name;
+      btn.appendChild(name);
+
+      btn.addEventListener('click', () => selectTemplate(t.id, btn));
+      tplList.appendChild(btn);
+    });
+  } catch { /* frames unavailable */ }
+}
+
+async function selectTemplate(frameId, btn) {
+  s.frameId = frameId || null;
+  tplList.querySelectorAll('.tpl-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  loadOverlay(s.frameId);
+
+  if (s.captured) {
+    s.previewKey = null;
+    render();
+  }
+}
+
+// ── Printer polling ───────────────────────────────────
+async function pollPrinter() {
+  const ip = printerIp.value.trim();
+  if (!ip) return;
+  try {
+    const res  = await fetch(`/printer/status?printer_ip=${encodeURIComponent(ip)}`);
+    const data = await res.json();
+
+    if (!data.connected) { setPill('Offline', 'offline'); return; }
+    if (data.errors && data.errors.length) { setPill('Error', 'error'); return; }
+
+    if (data.phase_type === 'Printing') {
+      setPill('Printing…', 'printing');
+    } else {
+      setPill(data.label || 'Online', 'online');
+    }
+
+    if (data.label && data.label !== s.label) {
+      s.label = data.label;
+      updateLabelDims(data.label);
+    }
+  } catch {
+    setPill('Offline', 'offline');
+  }
+}
+
+async function updateLabelDims(labelId) {
+  try {
+    const res    = await fetch('/labels');
+    const labels = await res.json();
+    const found  = labels.find(l => l.id === labelId);
+    if (found && (found.width !== s.labelW || found.height !== s.labelH)) {
+      applyLabel(found.width, found.height);
+      if (s.frameId) loadOverlay(s.frameId);
+      s.previewKey = null;
+      render();
+    }
+  } catch { /* keep current dims */ }
+}
+
+// ── Segmented controls ────────────────────────────────
+document.querySelectorAll('.seg-wrap').forEach(wrap => {
+  wrap.addEventListener('click', e => {
+    const btn = e.target.closest('.seg');
+    if (!btn) return;
+    wrap.querySelectorAll('.seg').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const key = wrap.dataset.key;
+    const val = btn.dataset.val;
+    if (key === 'fitMode') s.fitMode = val;
+    if (key === 'mirror')  s.mirror  = val === 'on';
+    if (s.captured) { s.previewKey = null; render(); }
+  });
+});
+
+// ── Event wiring ──────────────────────────────────────
+captureBtn.addEventListener('click', doCapture);
+quickBtn.addEventListener('click', doQuickPrint);
+loadBtn.addEventListener('click', () => loadInput.click());
+loadInput.addEventListener('change', e => { if (e.target.files[0]) loadFromFile(e.target.files[0]); });
+saveBtn.addEventListener('click', doSave);
+printBtn.addEventListener('click', doPrint);
+
+rotateBtn.addEventListener('click', () => {
+  s.rotation = (s.rotation + 90) % 360;
+  if (s.captured) { s.previewKey = null; render(); }
+});
+
+brightness.addEventListener('input', () => {
+  s.brightness             = +brightness.value;
+  brightnessV.textContent  = s.brightness;
+  if (s.captured) { s.previewKey = null; render(); }
+});
+
+printerIp.addEventListener('change', () => {
+  s.label = null;
+  pollPrinter();
+});
+
+// ── Init ──────────────────────────────────────────────
+(async function init() {
+  applyLabel(s.labelW, s.labelH);
   await loadTemplates();
-  await refreshGallery();
-  startCamera();
-  checkPrinterStatus(true);
+  await loadGallery();
+  await startCamera();
+  pollPrinter();
+  setInterval(pollPrinter, 2000);
+  setInterval(loadGallery, 10000);
 })();
