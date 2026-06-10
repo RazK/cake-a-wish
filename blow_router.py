@@ -184,153 +184,319 @@ _DEBUG_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Blow Detection Debug</title>
+<title>Blow Debug</title>
 <style>
-  :root {
-    --bg: #F0EEF8; --surface: #fff; --border: #E2DCF5;
-    --primary: #7C6FF7; --text: #2D2640; --sub: #8B83A8; --muted: #B8B0D0;
-    --green: #3EBD87; --red: #E05F7B; --amber: #F59E0B;
-  }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; font-size: 14px; color: var(--text);
-         background: var(--bg); padding: 24px; display: flex; flex-direction: column;
-         gap: 16px; max-width: 560px; }
-  h1 { font-size: 1.1rem; font-weight: 700; color: var(--primary); }
-  .card { background: var(--surface); border: 1px solid var(--border);
-          border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
-  .label { font-size: 0.62rem; font-weight: 700; letter-spacing: .08em;
-           text-transform: uppercase; color: var(--sub); }
-  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .pill { font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 99px;
-          border: 1.5px solid; white-space: nowrap; }
-  .pill.green { color: var(--green); border-color: var(--green); background: #edfaf5; }
-  .pill.red   { color: var(--red);   border-color: var(--red);   background: #fdf0f3; }
-  .pill.amber { color: var(--amber); border-color: var(--amber); background: #fef9ec; }
-  .pill.muted { color: var(--muted); border-color: var(--muted); background: #f7f5fc; }
-  .bar-wrap { flex: 1; height: 8px; background: #eee; border-radius: 4px; overflow: hidden; min-width: 80px; }
-  .bar-fill { height: 100%; background: var(--primary); border-radius: 4px; transition: width .1s; }
-  .bar-fill.blow { background: var(--red); }
-  .num { font-size: 0.78rem; color: var(--sub); min-width: 64px; text-align: right; }
-  .log { font-size: 0.72rem; font-family: monospace; color: var(--sub);
-         max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
-  .log-entry { padding: 4px 8px; border-radius: 6px; background: #f5f3fd; }
-  .log-entry.blow { background: #fdf0f3; color: var(--red); font-weight: 600; }
-  button { padding: 6px 14px; border-radius: 8px; border: 1.5px solid var(--primary);
-           background: var(--primary); color: #fff; font-size: 0.8rem; font-weight: 600;
-           cursor: pointer; }
-  button.outline { background: #fff; color: var(--primary); }
-  #sse-status { font-size: 0.72rem; }
+  body { background: #111; color: #ccc; font: 13px/1.5 'Courier New', monospace;
+         display: flex; height: 100vh; overflow: hidden; }
+
+  /* left: camera */
+  #left { position: relative; flex: 1; background: #000;
+          display: flex; align-items: center; justify-content: center; }
+  #cam  { display: block; max-width: 100%; max-height: 100%; }
+  #state-badge { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+                 font-size: 1.6rem; font-weight: 900; letter-spacing: .05em;
+                 text-shadow: 0 2px 10px #000; pointer-events: none; }
+  #init-msg { position: absolute; color: #666; font-size: 0.9rem; }
+
+  /* right: panel */
+  #right { width: 270px; flex-shrink: 0; display: flex; flex-direction: column;
+           border-left: 1px solid #222; overflow: hidden; }
+  .pane  { padding: 12px 14px; border-bottom: 1px solid #1e1e1e; flex-shrink: 0; }
+  .pane h3 { font-size: 0.62rem; text-transform: uppercase; letter-spacing: .1em;
+             color: #555; margin-bottom: 8px; }
+  .row   { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .pill  { font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 99px;
+           border: 1.5px solid; white-space: nowrap; }
+  .g { color: #3EBD87; border-color: #3EBD87; }
+  .r { color: #E05F7B; border-color: #E05F7B; }
+  .m { color: #444;    border-color: #333; }
+
+  .bar-wrap { position: relative; flex: 1; height: 7px; background: #222;
+              border-radius: 3px; overflow: visible; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width .07s; }
+  .bar-thresh { position: absolute; top: -4px; width: 2px; height: 15px;
+                background: #fff; border-radius: 1px; }
+  .val { font-size: 0.65rem; color: #555; white-space: nowrap; }
+
+  btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  button { padding: 4px 10px; background: #1e1e1e; border: 1px solid #333; color: #bbb;
+           border-radius: 4px; font: inherit; font-size: 0.75rem; cursor: pointer; }
+  button:hover { background: #2a2a2a; }
+
+  #log { flex: 1; overflow-y: auto; padding: 8px 12px; }
+  .entry { font-size: 0.68rem; color: #555; padding: 2px 0;
+           border-bottom: 1px solid #191919; white-space: nowrap; overflow: hidden;
+           text-overflow: ellipsis; }
+  .entry.blow { color: #E05F7B; font-weight: 700; }
+  .entry.info { color: #7C6FF7; }
 </style>
 </head>
 <body>
-<h1>Blow Detection Debug</h1>
 
-<div class="card">
-  <div class="label">SSE Stream <span id="sse-status" style="color:var(--muted)">connecting…</span></div>
-  <div class="row">
-    <div class="label" style="min-width:60px">Arduino</div>
-    <span id="ard-pill" class="pill muted">unknown</span>
-    <div class="bar-wrap"><div id="ard-bar" class="bar-fill" style="width:0%"></div></div>
-    <span id="ard-num" class="num">—</span>
-  </div>
-  <div class="row">
-    <div class="label" style="min-width:60px">MediaPipe</div>
-    <span id="mp-pill" class="pill muted">unknown</span>
-  </div>
-  <div class="row">
-    <div class="label" style="min-width:60px">Enabled</div>
-    <span id="en-pill" class="pill muted">—</span>
-    <span id="cd-val" class="num" style="text-align:left"></span>
-  </div>
+<div id="left">
+  <canvas id="cam"></canvas>
+  <div id="state-badge" style="color:#3EBD87">READY</div>
+  <div id="init-msg">initialising…</div>
 </div>
 
-<div class="card">
-  <div class="label">Controls</div>
-  <div class="row">
-    <button id="btn-on"  onclick="setSetting({enabled:true})">Enable</button>
-    <button id="btn-off" class="outline" onclick="setSetting({enabled:false})">Disable</button>
-    <button class="outline" onclick="simulateBlow()">Simulate MediaPipe blow</button>
+<div id="right">
+  <div class="pane">
+    <h3>MediaPipe</h3>
+    <div class="row">
+      <span id="mp-pill" class="pill m">loading</span>
+      <span id="mp-val" class="val">nw=—  thresh=—</span>
+    </div>
+    <div class="row">
+      <div class="bar-wrap">
+        <div id="mp-bar" class="bar-fill" style="width:70%;background:#7C6FF7"></div>
+        <div id="mp-thresh" class="bar-thresh" style="left:62%"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:4px;gap:4px">
+      <span style="font-size:.65rem;color:#444">thresh</span>
+      <input id="thresh-slider" type="range" min="20" max="80" value="50"
+             style="flex:1;accent-color:#7C6FF7">
+      <span id="thresh-num" class="val">0.50</span>
+    </div>
   </div>
+
+  <div class="pane">
+    <h3>Arduino  <span id="sse-dot" style="color:#555">● sse</span></h3>
+    <div class="row">
+      <span id="ard-pill" class="pill m">unknown</span>
+      <span id="ard-val" class="val">—</span>
+    </div>
+    <div class="row">
+      <div class="bar-wrap">
+        <div id="ard-bar" class="bar-fill" style="width:0%;background:#F59E0B"></div>
+        <div id="ard-thresh-line" class="bar-thresh" style="left:80%"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:4px">
+      <span id="en-pill" class="pill m">enabled: —</span>
+      <span id="cd-val" class="val"></span>
+    </div>
+  </div>
+
+  <div class="pane">
+    <h3>Controls</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button onclick="setSetting({enabled:true})">Enable</button>
+      <button onclick="setSetting({enabled:false})">Disable</button>
+      <button onclick="simBlow()">Sim blow</button>
+    </div>
+  </div>
+
+  <div style="padding:6px 14px;font-size:.6rem;color:#333;border-bottom:1px solid #1a1a1a;flex-shrink:0">
+    EVENT LOG
+  </div>
+  <div id="log"></div>
 </div>
 
-<div class="card" style="flex:1">
-  <div class="label">Event log</div>
-  <div class="log" id="log"></div>
-</div>
+<script type="module">
+import { FaceLandmarker, FilesetResolver }
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
-<script>
-const $ = id => document.getElementById(id);
+// ── landmarks ────────────────────────────────────────────────────
+const MOUTH_L = 61, MOUTH_R = 291, EYE_L = 33, EYE_R = 263;
+const MIN_FRAMES = 3, COOLDOWN_MS = 4000;
 
-function setPill(el, text, cls) {
-  el.textContent = text;
-  el.className = 'pill ' + cls;
+let threshold = 0.50;
+let state = 'ready', consec = 0, lastBlow = 0, flashUntil = 0;
+
+const cam = document.getElementById('cam');
+const ctx = cam.getContext('2d');
+const badge = document.getElementById('state-badge');
+const initMsg = document.getElementById('init-msg');
+
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function log(msg, cls='') {
+// ── log ──────────────────────────────────────────────────────────
+function addLog(msg, cls = '') {
   const d = document.createElement('div');
-  d.className = 'log-entry ' + cls;
-  d.textContent = new Date().toLocaleTimeString() + '  ' + msg;
-  const l = $('log');
-  l.prepend(d);
-  while (l.children.length > 60) l.lastChild.remove();
+  d.className = 'entry ' + cls;
+  d.textContent = new Date().toLocaleTimeString('en', {hour12:false}) + '  ' + msg;
+  const el = document.getElementById('log');
+  el.prepend(d);
+  while (el.children.length > 100) el.lastChild.remove();
 }
 
+// ── controls ─────────────────────────────────────────────────────
 function setSetting(body) {
-  fetch('/blow/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
-    .then(r => r.json()).then(d => log('settings → ' + JSON.stringify(body)));
+  fetch('/blow/settings', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+    .then(r => r.json()).then(() => addLog('settings ' + JSON.stringify(body), 'info'));
 }
-
-function simulateBlow() {
-  const ts = Date.now() / 1000;
-  fetch('/blow/event', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({source:'mediapipe', ts})})
-    .then(r => r.json()).then(() => log('sent POST /blow/event (mediapipe)', 'blow'));
+function simBlow() {
+  fetch('/blow/event', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({source:'mediapipe', ts: Date.now()/1000})})
+    .then(() => addLog('simulated blow sent', 'blow'));
 }
+window.setSetting = setSetting;
+window.simBlow = simBlow;
 
-let es;
-function connect() {
-  es = new EventSource('/blow/stream');
-  es.onopen = () => { $('sse-status').textContent = '● connected'; $('sse-status').style.color = 'var(--green)'; };
-  es.onerror = () => { $('sse-status').textContent = '● error — retrying'; $('sse-status').style.color = 'var(--red)'; };
-  es.onmessage = e => {
-    let d;
-    try { d = JSON.parse(e.data); } catch { return; }
+const slider = document.getElementById('thresh-slider');
+slider.addEventListener('input', () => {
+  threshold = slider.value / 100;
+  document.getElementById('thresh-num').textContent = threshold.toFixed(2);
+  updateThreshLine();
+});
+function updateThreshLine() {
+  document.getElementById('mp-thresh').style.left =
+    Math.min(100, (threshold / 0.8) * 100) + '%';
+}
+updateThreshLine();
 
-    if (d.event === 'blow') {
-      log('BLOW from ' + d.source, 'blow');
-      $('ard-bar').classList.add('blow');
-      setTimeout(() => $('ard-bar').classList.remove('blow'), 600);
-      return;
-    }
+// ── SSE ──────────────────────────────────────────────────────────
+const es = new EventSource('/blow/stream');
+const sseDot = document.getElementById('sse-dot');
+es.onopen  = () => { sseDot.style.color = '#3EBD87'; sseDot.textContent = '● sse'; };
+es.onerror = () => { sseDot.style.color = '#E05F7B'; sseDot.textContent = '● sse err'; };
+es.onmessage = e => {
+  let d; try { d = JSON.parse(e.data); } catch { return; }
+  if (d.event === 'blow') { addLog('BLOW ← server (' + d.source + ')', 'blow'); return; }
 
-    // status frame
-    const ard = d.arduino || {};
-    if (ard.connected) {
-      setPill($('ard-pill'), 'connected', 'green');
-      const pct = ard.threshold ? Math.min(100, Math.round(ard.level / ard.threshold * 80)) : 0;
-      $('ard-bar').style.width = pct + '%';
-      $('ard-num').textContent = (ard.level || 0) + ' / ' + (ard.threshold || 0);
+  const ard = d.arduino || {};
+  const ap = document.getElementById('ard-pill');
+  ap.className = 'pill ' + (ard.connected ? 'g' : 'm');
+  ap.textContent = ard.connected ? 'connected' : 'disconnected';
+  if (ard.threshold) {
+    const pct = Math.min(100, (ard.level / ard.threshold) * 80);
+    document.getElementById('ard-bar').style.width = pct + '%';
+    document.getElementById('ard-thresh-line').style.left =
+      Math.min(100, (ard.threshold / 200) * 100) + '%';
+    document.getElementById('ard-val').textContent =
+      'lvl=' + ard.level + ' thr=' + ard.threshold;
+  }
+  const ep = document.getElementById('en-pill');
+  ep.className = 'pill ' + (d.enabled ? 'g' : 'm');
+  ep.textContent = 'enabled: ' + (d.enabled ? 'yes' : 'no');
+  document.getElementById('cd-val').textContent = 'cd=' + d.countdown_s + 's';
+};
+
+// ── MediaPipe init ────────────────────────────────────────────────
+addLog('loading FaceLandmarker…', 'info');
+const vision = await FilesetResolver.forVisionTasks(
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+);
+const landmarker = await FaceLandmarker.createFromOptions(vision, {
+  baseOptions: { modelAssetPath: '/blow/face_landmarker.task', delegate: 'GPU' },
+  runningMode: 'VIDEO',
+  numFaces: 1,
+});
+addLog('FaceLandmarker ready', 'info');
+
+const vid = document.createElement('video');
+vid.autoplay = true; vid.playsInline = true; vid.muted = true;
+const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+vid.srcObject = stream;
+await new Promise(res => vid.onloadedmetadata = res);
+await vid.play();
+
+initMsg.style.display = 'none';
+document.getElementById('mp-pill').className = 'pill g';
+document.getElementById('mp-pill').textContent = 'active';
+
+// ── render loop ───────────────────────────────────────────────────
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (vid.readyState < 2) return;
+
+  const W = vid.videoWidth, H = vid.videoHeight;
+  if (cam.width !== W || cam.height !== H) { cam.width = W; cam.height = H; }
+
+  // draw mirrored frame
+  ctx.save();
+  ctx.scale(-1, 1); ctx.translate(-W, 0);
+  ctx.drawImage(vid, 0, 0);
+  ctx.restore();
+
+  const result = landmarker.detectForVideo(vid, now);
+  const lms = result.faceLandmarks;
+  let nw = 1.0;
+
+  if (lms && lms.length > 0) {
+    const lm = lms[0];
+    const mw = dist(lm[MOUTH_L], lm[MOUTH_R]);
+    const fw = dist(lm[EYE_L],   lm[EYE_R]);
+    nw = fw > 0 ? mw / fw : 1.0;
+
+    // state machine
+    const pursed = nw <= threshold;
+    if (state === 'ready') {
+      consec = pursed ? consec + 1 : 0;
+      if (consec >= MIN_FRAMES && (now - lastBlow) >= COOLDOWN_MS) {
+        state = 'blowing'; lastBlow = now; flashUntil = now + 600; consec = 0;
+        addLog('BLOW nw=' + nw.toFixed(3), 'blow');
+        fetch('/blow/event', {method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({source:'mediapipe', ts: now/1000})});
+      }
     } else {
-      setPill($('ard-pill'), 'disconnected', 'red');
-      $('ard-bar').style.width = '0%';
-      $('ard-num').textContent = '—';
+      if (!pursed) { state = 'ready'; consec = 0; }
     }
 
-    const mp = d.mediapipe || {};
-    setPill($('mp-pill'), mp.active ? 'active' : 'inactive', mp.active ? 'green' : 'muted');
+    // draw landmarks — mirrored x = (1 - lm.x) * W
+    const dot = state === 'blowing' ? '#E05F7B' : '#7C6FF7';
+    [MOUTH_L, MOUTH_R, EYE_L, EYE_R].forEach(i => {
+      const p = lm[i];
+      ctx.beginPath();
+      ctx.arc((1 - p.x) * W, p.y * H, 5, 0, Math.PI * 2);
+      ctx.fillStyle = dot; ctx.fill();
+    });
+    // mouth line
+    const ml = lm[MOUTH_L], mr = lm[MOUTH_R];
+    ctx.beginPath();
+    ctx.moveTo((1 - ml.x) * W, ml.y * H);
+    ctx.lineTo((1 - mr.x) * W, mr.y * H);
+    ctx.strokeStyle = dot; ctx.lineWidth = 2; ctx.stroke();
 
-    setPill($('en-pill'), d.enabled ? 'on' : 'off', d.enabled ? 'green' : 'amber');
-    $('cd-val').textContent = 'countdown ' + (d.countdown_s || 3) + 's';
-  };
+    // HUD bar (top-left, like Python version)
+    const bx = 14, by = 14, bw = Math.min(W - 28, 260), bh = 22;
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(bx, by, bw, bh);
+    const fillW = Math.min(nw / 0.8, 1) * bw;
+    ctx.fillStyle = state === 'blowing' ? '#E05F7B' : '#3EBD87';
+    ctx.fillRect(bx, by, fillW, bh);
+    const tx = bx + Math.min((threshold / 0.8) * bw, bw);
+    ctx.fillStyle = '#fff'; ctx.fillRect(tx - 1, by - 3, 2, bh + 6);
+    ctx.fillStyle = '#fff'; ctx.font = '11px monospace';
+    ctx.fillText('nw=' + nw.toFixed(3) + '  thresh=' + threshold.toFixed(2) +
+                 '  ' + state.toUpperCase() + '  ' + consec + '/' + MIN_FRAMES,
+                 bx + 4, by + 15);
+
+    // sidebar update
+    document.getElementById('mp-bar').style.width =
+      Math.min(100, (nw / 0.8) * 100) + '%';
+    document.getElementById('mp-val').textContent =
+      'nw=' + nw.toFixed(3) + '  thresh=' + threshold.toFixed(2);
+  }
+
+  // blow flash border
+  if (now < flashUntil) {
+    ctx.strokeStyle = '#E05F7B'; ctx.lineWidth = 10;
+    ctx.strokeRect(5, 5, W - 10, H - 10);
+  }
+
+  // badge
+  if (now < flashUntil) {
+    badge.style.color = '#E05F7B'; badge.textContent = 'BLOW';
+  } else {
+    badge.style.color = state === 'blowing' ? '#E05F7B' : '#3EBD87';
+    badge.textContent = state.toUpperCase();
+  }
 }
 
-connect();
+requestAnimationFrame(tick);
 </script>
 </body>
 </html>"""
 
 
-@router.get("/blow/debug", response_class=FileResponse)
+@router.get("/blow/debug")
 async def blow_debug():
     from fastapi.responses import HTMLResponse
     return HTMLResponse(_DEBUG_HTML)
