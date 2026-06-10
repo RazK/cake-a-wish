@@ -5,19 +5,74 @@ Single source of truth for phased build-out.
 
 ---
 
-## Phase 1 — Runnable Skeleton
+## Concurrent Implementation & Ownership
 
-**What gets built:**
-- `web.py` — FastAPI app, single route `GET /admin`, Jinja2 template rendering
-- `templates/admin.html` — design tokens as CSS variables, Poppins loaded, correct page structure (header / workspace / action-bar / gallery / settings / status-bar divs) with placeholder content, no JS
+Two Claudes are working in parallel. This section defines the split, the
+architecture decision, and the exact integration contract so neither blocks
+the other.
 
-**Goal:** `uvicorn web:app` runs, `/admin` opens in browser, page structure is visible.
+### Architecture decision — camera ownership
 
-### ✋ Approval gate
-> Run the app and confirm:
-> 1. `uvicorn web:app` starts without errors
-> 2. `/admin` loads in the browser
-> 3. Page sections are visible (even if unstyled/empty)
+**The problem:** A webcam can only be opened by one process at a time.
+Server-side Python MediaPipe + browser `getUserMedia` for live preview would
+conflict — one would fail.
+
+**Decision:** Browser owns the camera exclusively.
+- MediaPipe runs in the **browser** (`@mediapipe/tasks-vision` JS/WASM)
+- Face blend shapes (`cheekPuff`, `mouthPucker`) detect blowing at 30fps in-browser
+- Arduino serial stays **server-side** (can't access serial from browser)
+- No video frames streamed over WebSocket — only the final blow event crosses the wire
+
+### Ownership split
+
+| Area | Owner |
+|------|-------|
+| `web.py` — printer API, preview, print, gallery, SSE endpoint | **Web Claude (this file)** |
+| `templates/admin.html` — all frontend JS including MediaPipe JS | **Web Claude (this file)** |
+| Arduino serial reader (`blow_detector.py` or equivalent) | **Other Claude** |
+| `GET /blow/status` + SSE push when Arduino fires `BLOW` | **Other Claude** exposes; Web Claude consumes |
+
+### Integration contract (the only thing that must be agreed)
+
+**Other Claude delivers one SSE endpoint:**
+```
+GET /blow/stream
+```
+Streams Server-Sent Events. Each Arduino blow fires:
+```
+data: {"source": "arduino", "level": 142, "threshold": 95}
+```
+Also streams periodic status (every 1s):
+```
+data: {"arduino": {"connected": true, "level": 38, "threshold": 95}, "enabled": true, "countdown_s": 3}
+```
+
+**Web Claude consumes it:**
+- Browser `EventSource('/blow/stream')` — no polling needed
+- MediaPipe JS runs independently in browser on the camera stream
+- Blow fires when **either** Arduino SSE event arrives **or** MediaPipe detects blow
+- Both update the same Blow to Print UI state
+
+**Settings written by Web Claude:**
+```
+POST /blow/settings   { enabled?, sensitivity?, countdown_s? }
+```
+Other Claude implements this endpoint; Web Claude calls it.
+
+### What can run fully in parallel (no dependency)
+
+Web Claude can complete Phases 2–5 without waiting for anything from Other Claude.
+Phase 6 (blow integration) is the merge point — needs the SSE endpoint contract
+above to be live before wiring up the frontend.
+
+---
+
+## Phase 1 — Runnable Skeleton ✅ Done
+
+**What was built:**
+- `web.py` — FastAPI app, `GET /admin`, Jinja2 template rendering
+- `templates/admin.html` — 3-column holy grail layout, design tokens, Handjet logo,
+  canvas with label info below, centered action bar, placeholder content
 
 ---
 
@@ -51,27 +106,28 @@ Single source of truth for phased build-out.
 ## Phase 3 — Static UI
 
 **What gets built (all in `templates/admin.html`):**
-- Full CSS implementation of DESIGN.md §1–3:
+- Full CSS implementation of DESIGN.md tokens and components:
   - All design tokens as `--css-variables`
-  - Typography: Poppins, all sizes/weights
-  - All components: printer status pill, template buttons, segmented control, primary/outline/icon buttons, brightness slider, gallery items, settings collapsible
-  - Full 616px layout at correct proportions
+  - Typography: Poppins + Handjet, all sizes/weights
+  - All components: printer status pill, template buttons, segmented control,
+    primary/outline/icon buttons, brightness slider, gallery items
+  - 3-column holy grail layout fully styled
 - Static HTML with hardcoded placeholder content (no JS)
-- **Blow to Print card** (static, no JS) — added to the left column below Settings:
+- **Blow to Print card** (static, no JS) — in the left column:
   - Card label: "BLOW TO PRINT"
   - Toggle row: "Quick print on blow" On/Off segmented control (placeholder state)
   - Status row: two pills — Arduino (connected/disconnected) + MediaPipe (active/inactive)
-  - Threshold row: sensitivity slider + numeric value
-  - Countdown row: display placeholder "3s" (the delay between blow detected and shutter)
+  - Sensitivity slider + numeric value
+  - Countdown display placeholder "3s"
 
-**Goal:** Page looks pixel-correct against DESIGN.md wireframes with no behavior. Blow to Print card is visible and styled but inert.
+**Goal:** Page looks pixel-correct. All components styled. No behavior.
 
 ### ✋ Approval gate
 > Open `/admin` and visually confirm:
-> 1. Layout matches the 616px two-column wireframe
+> 1. Layout matches the 3-column holy grail (printer+blow left / canvas center / image+gallery right)
 > 2. All components look right (pill, template buttons, action bar, gallery, settings)
 > 3. Color, typography, spacing match the design tokens
-> 4. Blow to Print card is visible below Settings, layout correct, no JS errors in console
+> 4. Blow to Print card is visible in the left column, styled correctly, no JS errors
 
 ---
 
@@ -82,6 +138,7 @@ Single source of truth for phased build-out.
 - Template overlay fetch from `/templates/{id}/overlay.png` → composited on canvas each frame
 - Printer status polling every 2s → pill state updates (checking / online / offline / printing / error)
 - Template button clicks → fetch new overlay, update active state
+- Canvas dimensions set from `GET /printer` response (`label_w × label_h`)
 
 **Goal:** Open page, see live camera feed with template composited on top. Pill reflects real printer state.
 
@@ -91,6 +148,7 @@ Single source of truth for phased build-out.
 > 2. Template overlay is composited correctly on the live feed
 > 3. Clicking a template button switches the overlay
 > 4. Printer status pill updates from the server every 2s
+> 5. Canvas dimensions update when printer label changes
 
 ---
 
@@ -104,7 +162,7 @@ Single source of truth for phased build-out.
 - Disabled states: Print + Save disabled until captured; ⚡ disabled until camera ready
 - State D: template change while captured → re-fires preview, no flash
 
-**Goal:** Full happy path works end-to-end — capture → see dithered preview → print → thumbnail appears in gallery.
+**Goal:** Full happy path works end-to-end — capture → dithered preview → print → thumbnail in gallery.
 
 ### ✋ Approval gate
 > Walk the happy path:
@@ -118,33 +176,36 @@ Single source of truth for phased build-out.
 
 ## Phase 6 — Blow Detection Integration
 
+**Depends on:** Other Claude's `GET /blow/stream` SSE endpoint being live (see contract above).
+
 **What gets built:**
 
 Backend (`web.py`):
-- Background task: reads Arduino serial (`/dev/cu.usbserial-21310`, 115200 baud) using `blow_detector.py` pattern — parses `BASELINE`, `LEVEL`, `BLOW` lines
-- Background task: MediaPipe webcam blow classifier — detects blow facial expression from the same camera feed
-- Fusion: blow event fires when Arduino sends `BLOW` **or** MediaPipe detects a blow (either signal sufficient; configurable)
-- Persisted settings (JSON): `enabled` bool, `sensitivity` (maps to Arduino threshold multiplier), `countdown_s` int
-- Routes:
-  - `GET /blow/status` → `{enabled, arduino: {connected, level, threshold}, mediapipe: {active}}`
-  - `POST /blow/settings` `{enabled?, sensitivity?, countdown_s?}` → `{ok}`
+- Consumes Other Claude's blow module — imports and wires Arduino serial reader into startup
+- Adds `GET /blow/stream` SSE route (or defers to Other Claude's implementation)
+- Adds `POST /blow/settings` `{enabled?, sensitivity?, countdown_s?}` → `{ok}`
+- Persists settings to JSON file
 
-Frontend (JS in `admin.html`):
-- Wire Blow to Print toggle → `POST /blow/settings {enabled}`
-- Poll `GET /blow/status` every 1s → update Arduino + MediaPipe status pills, live level meter in threshold row
-- Sensitivity slider → `POST /blow/settings {sensitivity}` on change
-- Countdown input → `POST /blow/settings {countdown_s}` on change
-- Blow trigger: when `enabled` and blow event arrives (via polling or SSE) → start countdown animation → fire ⚡ Quick Print at zero
+Frontend (`admin.html` JS):
+- Load `@mediapipe/tasks-vision` — initialize FaceLandmarker on the live camera stream
+- Detect blow from blend shapes: `cheekPuff > 0.6` AND `mouthPucker > 0.4` for N consecutive frames
+- `EventSource('/blow/stream')` — listen for Arduino blow events
+- Fuse both signals: either source triggers countdown
+- Blow to Print toggle → `POST /blow/settings {enabled}`
+- Sensitivity slider → maps to blend shape threshold + `POST /blow/settings {sensitivity}`
+- Countdown input → `POST /blow/settings {countdown_s}`
+- On blow (when enabled): animate countdown overlay → fire ⚡ Quick Print at zero
+- Update Arduino pill + MediaPipe pill from SSE status messages
 
-**Goal:** Blow into the mic → countdown ticks on screen → photo captured and printed automatically.
+**Goal:** Blow into mic or toward camera → countdown → auto print.
 
 ### ✋ Approval gate
-> 1. `GET /blow/status` returns correct Arduino + MediaPipe state
-> 2. Toggle on → blow into mic → countdown appears on screen
-> 3. Countdown reaches zero → Quick Print fires (capture + print)
-> 4. Toggle off → blowing does nothing
-> 5. Arduino pill shows connected/disconnected correctly; MediaPipe pill shows active/inactive
-> 6. Sensitivity slider changes detection threshold in real time (visible in level meter)
+> 1. `GET /blow/stream` delivers SSE events
+> 2. Toggle on → blow toward camera → MediaPipe detects → countdown appears
+> 3. Toggle on → blow into Arduino mic → Arduino event → countdown appears
+> 4. Countdown reaches zero → Quick Print fires
+> 5. Toggle off → blowing does nothing
+> 6. Arduino pill + MediaPipe pill reflect live state
 
 ---
 
@@ -165,7 +226,6 @@ Frontend (JS in `admin.html`):
 **Goal:** All controls work. All button interactions correct. Edge cases handled.
 
 ### ✋ Approval gate
-> Test each control:
 > 1. Fit / Mirror / Rotate all affect the canvas visibly
 > 2. Brightness slider changes image brightness
 > 3. Changing printer IP in Settings → pill goes to checking → updates
