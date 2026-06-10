@@ -170,90 +170,76 @@ Click:     loads raw (pre-frame) image back into canvas for re-editing
 
 ## 3. Layout — /admin Page
 
-### Page structure (top to bottom)
+### Page structure
 ```
-[lavender gradient background, full page]
+[lavender gradient background, full viewport]
 
-  header                     ← NOT a card, floats on gradient
-  workspace row              ← preview-wrap + sidebar, both float on gradient
-  action-bar card            ← IS a white card
-  gallery card               ← IS a white card
-  settings collapsible       ← summary/details, styled as thin card
-  status-bar                 ← tiny text line, no background
+┌─────────────────┬─────────────────────────────────────┐
+│  LEFT COLUMN    │  CANVAS AREA                        │
+│  (fixed width)  │  (flex: 1, fills remaining space)   │
+│                 │                                     │
+│  • header       │  canvas — centered, aspect ratio    │
+│  • template     │  determined by label_w × label_h    │
+│  • image ctrls  │  from GET /printer. No fixed ratio. │
+│  • action bar   │                                     │
+│  • gallery      │                                     │
+│  • settings     │                                     │
+│  • status bar   │                                     │
+└─────────────────┴─────────────────────────────────────┘
 ```
 
 ### Dimensions
 ```
-Content width:   616px  (centered, max-width 100%)
-  preview-wrap:  300px wide × 450px tall
-  gap:           16px
-  sidebar:       300px wide
+Left column:   300px fixed, full viewport height, overflow-y: auto
+               padding: 16px 14px
+               display: flex, flex-direction: column, gap: 10px
 
-All rows (header, workspace, action-bar, gallery, settings)
-align to the same 616px width.
+Canvas area:   flex: 1, full viewport height
+               display: flex, align-items: center, justify-content: center
+               padding: 20px
 
-Page height budget (targeting no-scroll on 800px viewport):
-  header:        48px
-  gap:           10px
-  workspace:     450px  (taller of: canvas height OR sidebar natural height)
-  gap:           10px
-  action-bar:    58px   (card with padding + buttons)
-  gap:           10px
-  gallery card:  112px  (label row 20px + thumbs 80px + padding top+bottom 12px each)
-  gap:           10px
-  settings:      38px
-  status-bar:    20px
-  padding top:   12px
-  padding bottom:20px
-  ─────────────────
-  Total:         798px  → fits 800px, barely scrolls on 768px
-```
-
-### Preview wrap
-```
-Width:  300px  (fixed, flex-shrink: 0)
-Height: 450px  (fixed — canvas scales inside via CSS)
-Display: flex, align-items center, justify-content center
-
-Canvas CSS:
+Canvas element:
   max-width:  100%
   max-height: 100%
   width: auto
   height: auto
-  → For 62red (696×1044, ratio 0.667):
-    width-constrained: 300 wide × 449px tall — fills wrap perfectly
-  → For narrow labels (e.g. 29×90, ratio 0.309):
-    height-constrained: 139px wide × 450px tall — narrow, lavender shows on sides
+  aspect ratio set by JS: canvas.width = label_w, canvas.height = label_h
+  Fallback: 696 × 1044 (62red) until API responds
 
-Canvas element styling:
   border-radius: 8px
   box-shadow: 0 6px 32px rgba(44,38,64,.22)
-  image-rendering: pixelated  (crisp, no blur)
-  No white card behind it — canvas sits directly on the lavender bg
+  image-rendering: pixelated
+  No card wrapper — sits directly on gradient
 ```
 
-### Sidebar
+### Left column contents (top to bottom)
 ```
-Width: 300px (fixed, flex-shrink: 0)
-Display: flex, flex-direction: column, gap: 8px
-align-items: flex-start  (sidebar height = content height, NOT canvas height)
+Header (not a card):
+  App title "🎂 Cake A Wish"
+  Printer status pill (right side of header row)
 
-Card 1 — Template:
+Card — Template:
   card-label: "TEMPLATE"
-  content: .tpl-list (flex row, gap 6px, 3 buttons: Clean / Bold / Retro)
-  height: ~106px total
+  .tpl-list: flex row, gap 6px, 3 buttons: Clean / Bold / Retro
 
-Card 2 — Image:
+Card — Image:
   card-label: "IMAGE"
-  content: 4 control rows
-    Row 1: Fit     [Contain | Cover | Stretch]    segs × 3
-    Row 2: Mirror  [ Off | On ]                   segs × 2
-    Row 3: Rotate  [↻ 90° ghost-btn]
-    Row 4: Brightness  ━●━━━ [-100..100]  value
-  height: ~172px total
+  Row 1: Fit     [Contain | Cover | Stretch]
+  Row 2: Mirror  [Off | On]
+  Row 3: Rotate  [↻ 90° ghost-btn]
+  Row 4: Brightness  slider  value
 
-Total sidebar height: ~106 + 8 + 172 = ~286px
-(Sidebar stops at 286px; 164px of gradient shows below it on the right side)
+Card — Action bar:
+  [Capture/Retake]  [⚡]  [📂]  [💾]  [Print]
+
+Card — Gallery:
+  card-label + note "last 8 · click to re-edit"
+  thumbnail strip
+
+Settings (collapsible <details>):
+  Printer IP input
+
+Status bar (no card, tiny text)
 ```
 
 ### Action bar card

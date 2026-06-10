@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cake A Wish — Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Handjet&display=swap" rel="stylesheet">
+  <style>
+    /* ── Design Tokens ─────────────────────────────────────────── */
+    :root {
+      --bg-from:    #F0EEF8;
+      --bg-to:      #E8E4F5;
+      --surface:    #FFFFFF;
+      --border:     #E2DCF5;
+      --primary:    #7C6FF7;
+      --primary-dk: #6258D3;
+      --ghost:      #F2F0FE;
+      --accent:     #C9C2F8;
+      --text:       #2D2640;
+      --sub:        #8B83A8;
+      --muted:      #B8B0D0;
+      --green:      #3EBD87;
+      --red:        #E05F7B;
+      --amber:      #F59E0B;
+      --col-width:  260px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background: linear-gradient(150deg, var(--bg-from), var(--bg-to)) fixed;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ────────────────────────────────────────────────── */
+    .header {
+      flex-shrink: 0;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.55);
+      backdrop-filter: blur(8px);
+    }
+
+    .header-title {
+      font-family: 'Handjet', monospace;
+      font-size: 1.6rem;
+      font-weight: 400;
+      letter-spacing: 0.01em;
+    }
+
+    .header-status {
+      position: absolute;
+      left: 20px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--sub);
+    }
+
+    /* ── Holy grail body ───────────────────────────────────────── */
+    .body-row {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Shared column styles ──────────────────────────────────── */
+    .left-col,
+    .right-col {
+      width: var(--col-width);
+      flex-shrink: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 12px 14px;
+      gap: 10px;
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+    .left-col::-webkit-scrollbar,
+    .right-col::-webkit-scrollbar { display: none; }
+
+    .left-col {
+      border-right: 1px solid var(--border);
+      background: rgba(255,255,255,0.30);
+    }
+
+    .right-col {
+      border-left: 1px solid var(--border);
+      background: rgba(255,255,255,0.30);
+    }
+
+    /* ── Canvas area (center column) ───────────────────────────── */
+    .canvas-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 20px 16px;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .canvas-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      overflow: hidden;
+    }
+
+    #canvas {
+      max-width: min(100%, 320px);
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      border-radius: 8px;
+      box-shadow: 0 6px 32px rgba(44, 38, 64, .22);
+      image-rendering: pixelated;
+      background: rgba(255,255,255,0.18);
+    }
+
+    .canvas-info {
+      flex-shrink: 0;
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--sub);
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Action bar (center, below canvas) ─────────────────────── */
+    .action-bar {
+      flex-shrink: 0;
+      align-self: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    /* ── Card ──────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 2px 14px rgba(44, 38, 64, .09);
+      padding: 12px 14px;
+      flex-shrink: 0;
+    }
+
+    .card.grow {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .card-label {
+      font-size: 0.63rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--sub);
+      margin-bottom: 8px;
+    }
+
+    /* ── Gallery ───────────────────────────────────────────────── */
+    .gallery-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .gallery-note {
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .gallery-strip {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .gallery-strip::-webkit-scrollbar { display: none; }
+
+    /* ── Status bar ────────────────────────────────────────────── */
+    .status-bar {
+      font-size: 0.7rem;
+      color: var(--muted);
+      min-height: 1em;
+      padding: 2px 0;
+      flex-shrink: 0;
+    }
+    .status-bar.ok  { color: var(--green); }
+    .status-bar.err { color: var(--red); }
+
+    /* ── Placeholder helpers ───────────────────────────────────── */
+    .placeholder {
+      color: var(--muted);
+      font-size: 0.78rem;
+      padding: 2px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Full-width header -->
+  <header class="header">
+    <span class="header-status placeholder">● Checking…</span>
+    <span class="header-title">🎂 Cake A Wish 🖨️</span>
+  </header>
+
+  <div class="body-row">
+
+    <!-- Left — Printer + Blow to Print -->
+    <div class="left-col">
+
+      <div class="card">
+        <div class="card-label">Printer</div>
+        <div class="placeholder">[ Connected · 62red · 696×1044 ]</div>
+      </div>
+
+      <div class="card grow">
+        <div class="card-label">Blow to Print</div>
+        <div class="placeholder">[ Toggle · Arduino · MediaPipe · Sensitivity ]</div>
+      </div>
+
+    </div>
+
+    <!-- Center — Canvas + label info + action bar -->
+    <div class="canvas-area">
+
+      <div class="canvas-wrap">
+        <canvas id="canvas" width="696" height="1044"></canvas>
+        <div class="canvas-info" id="canvas-info">62red · 696 × 1044 px</div>
+      </div>
+
+      <div class="card action-bar">
+        <span class="placeholder">[ Capture ] [ ⚡ ] [ 📂 ] [ 💾 ] [ Print ]</span>
+      </div>
+
+    </div>
+
+    <!-- Right — Image controls + Gallery -->
+    <div class="right-col">
+
+      <div class="card">
+        <div class="card-label">Template</div>
+        <div class="placeholder">[ Clean · Bold · Retro ]</div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Image</div>
+        <div class="placeholder">[ Fit · Mirror · Rotate · Brightness ]</div>
+      </div>
+
+      <div class="card grow">
+        <div class="gallery-header">
+          <span class="card-label">Gallery</span>
+          <span class="gallery-note">last 8 · click to re-edit</span>
+        </div>
+        <div class="gallery-strip">
+          <span class="placeholder">No prints yet</span>
+        </div>
+      </div>
+
+      <div class="status-bar" id="status-bar"></div>
+
+    </div>
+
+  </div>
+
+</body>
+</html>
