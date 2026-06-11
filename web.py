@@ -26,7 +26,7 @@ _OVERLAY_PATHS = {
     "full":   Path("overlay_full.png"),
 }
 
-_FALLBACK_LABEL = "62red"
+_FALLBACK_LABEL = "62"
 _FALLBACK_W, _FALLBACK_H = 696, 1044
 _DEFAULT_IP = os.getenv("PRINTER_IP", "10.140.224.9")
 _DEFAULT_BT = os.getenv("PRINTER_BT_DEV", "")  # e.g. /dev/cu.QL-820NWB5742
@@ -52,7 +52,8 @@ def _make_printer():
     if _printer_bt:
         return BTBrotherPrinter(_printer_bt)
     return BrotherPrinter(_printer_ip)
-_history: list[dict] = []
+_photos: list[dict] = []
+_saved_templates: list[dict] = []
 
 # ── Label helpers ─────────────────────────────────────────────────────────────
 
@@ -74,9 +75,6 @@ def _detect_label(status: dict, model: str = "QL-820NWB") -> str:
     length = status.get("media_length", 0) # mm (0 = continuous)
     if not width:
         return _FALLBACK_LABEL
-    # QL-820NWB + 62mm continuous tape → 62red (two-colour)
-    if "820" in model and width == 62 and length == 0:
-        return "62red"
     try:
         from brother_ql.labels import LabelsManager
         lm = LabelsManager()
@@ -105,6 +103,11 @@ def _encode_image(img: Image.Image, fmt: str = "PNG", **kw) -> str:
     img.save(buf, format=fmt, **kw)
     mime = "image/jpeg" if fmt.upper() in ("JPEG", "JPG") else "image/png"
     return f"data:{mime};base64,{base64.b64encode(buf.getvalue()).decode()}"
+
+
+def _decode_overlay(data_url: str) -> Image.Image:
+    _, _, b64 = data_url.partition(",")
+    return Image.open(io.BytesIO(base64.b64decode(b64 or data_url)))
 
 
 def _thumbnail(img: Image.Image) -> str:
@@ -269,6 +272,21 @@ class ImageRequest(BaseModel):
     template_id: Optional[str] = None
 
 
+class PrintRequest(BaseModel):
+    image_data: str
+    template_id: Optional[str] = None
+    raw_data: Optional[str] = None  # raw camera frame for photos gallery
+
+
+class PhotoSave(BaseModel):
+    raw_data: str
+
+
+class TemplateSave(BaseModel):
+    name: str
+    slots: dict  # {full, header, footer} each None or {align, data_url, original_name}
+
+
 @app.post("/preview")
 async def preview(req: ImageRequest):
     img = _decode_image(req.image_data)
@@ -281,34 +299,128 @@ async def preview(req: ImageRequest):
 # ── Print ─────────────────────────────────────────────────────────────────────
 
 @app.post("/print")
-async def print_label(req: ImageRequest):
+async def print_label(req: PrintRequest):
     img = _decode_image(req.image_data)
     w, h = _printer_state["label_w"], _printer_state["label_h"]
     img = img.resize((w, h), Image.LANCZOS)
     framed = await asyncio.to_thread(_apply_frame, img, req.template_id)
     label_id = _printer_state["label_id"]
     try:
-        instructions = await asyncio.to_thread(build_instructions, framed, label_id)
+        instructions = await asyncio.to_thread(build_instructions, framed.rotate(180), label_id)
         printer = _make_printer()
         await asyncio.to_thread(printer.send_instructions, instructions)
     except Exception as exc:
         raise HTTPException(500, str(exc))
 
-    thumb = _thumbnail(img)
-    _history.insert(0, {
-        "thumbnail": thumb,
-        "raw": req.image_data,
-        "template_id": req.template_id or "",
-        "label_id": label_id,
-    })
-    del _history[8:]
-    return {"ok": True, "thumbnail": thumb}
+    if req.raw_data:
+        raw_img = _decode_image(req.raw_data)
+        _photos.insert(0, {"thumbnail": _thumbnail(raw_img), "raw_data": req.raw_data})
+        del _photos[20:]
 
-# ── History ───────────────────────────────────────────────────────────────────
+    return {"ok": True}
 
-@app.get("/history")
-async def get_history():
-    return _history
+# ── Photos ────────────────────────────────────────────────────────────────────
+
+@app.get("/photos")
+async def get_photos():
+    return [{"thumbnail": p["thumbnail"], "raw_data": p["raw_data"], "index": i}
+            for i, p in enumerate(_photos)]
+
+
+@app.post("/photos")
+async def save_photo(req: PhotoSave):
+    img = _decode_image(req.raw_data)
+    _photos.insert(0, {"thumbnail": _thumbnail(img), "raw_data": req.raw_data})
+    del _photos[20:]
+    return {"ok": True}
+
+
+@app.delete("/photos/{index}")
+async def delete_photo(index: int):
+    if index < 0 or index >= len(_photos):
+        raise HTTPException(404, "Not found")
+    _photos.pop(index)
+    return {"ok": True}
+
+# ── Saved templates ───────────────────────────────────────────────────────────
+
+@app.get("/saved-templates")
+async def get_saved_templates():
+    return [{"name": t["name"], "thumbnail": t["thumbnail"], "index": i}
+            for i, t in enumerate(_saved_templates)]
+
+
+@app.get("/saved-templates/{index}")
+async def get_saved_template(index: int):
+    if index < 0 or index >= len(_saved_templates):
+        raise HTTPException(404, "Not found")
+    return _saved_templates[index]
+
+
+def _template_thumbnail(slots: dict) -> Optional[str]:
+    TW, TH = 120, 180
+    LABEL_W = 696
+    base = Image.new("RGBA", (TW, TH), (45, 40, 65, 255))
+    scale = TW / LABEL_W  # ~0.172 — preserve natural overlay proportions
+    for slot in ("full", "header", "footer"):
+        data = slots.get(slot)
+        if not data:
+            continue
+        try:
+            ov = _decode_overlay(data["data_url"]).convert("RGBA")
+            align = data.get("align", "full")
+            if slot == "full":
+                ov_r = ov.resize((TW, TH), Image.LANCZOS)
+                base.paste(ov_r, (0, 0), ov_r)
+            else:
+                if align == "full":
+                    # stretch to full thumb width
+                    ov_w = TW
+                    ov_h = max(1, int(ov.height * TW / ov.width))
+                    x = 0
+                else:
+                    # scale by label ratio so partial overlays look partial
+                    ov_w = max(1, int(ov.width * scale))
+                    ov_h = max(1, int(ov.height * scale))
+                    x = {"left": 0, "right": TW - ov_w, "center": (TW - ov_w) // 2}.get(align, 0)
+                ov_r = ov.resize((ov_w, ov_h), Image.LANCZOS)
+                y = 0 if slot == "header" else TH - ov_h
+                base.paste(ov_r, (x, y), ov_r)
+        except Exception:
+            pass
+    buf = io.BytesIO()
+    base.convert("RGB").save(buf, format="JPEG", quality=82)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+@app.post("/saved-templates")
+async def save_template(req: TemplateSave):
+    processed = {}
+    for slot, data in req.slots.items():
+        if not data:
+            processed[slot] = None
+            continue
+        try:
+            img = _decode_overlay(data["data_url"])
+            img.thumbnail((350, 525), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode()
+            processed[slot] = {**data, "data_url": "data:image/png;base64," + b64}
+        except Exception:
+            processed[slot] = data
+    thumb = await asyncio.to_thread(_template_thumbnail, processed)
+    _saved_templates.insert(0, {"name": req.name, "thumbnail": thumb, "slots": processed})
+    del _saved_templates[20:]
+    return {"ok": True}
+
+
+@app.delete("/saved-templates/{index}")
+async def delete_saved_template(index: int):
+    if index < 0 or index >= len(_saved_templates):
+        raise HTTPException(404, "Not found")
+    _saved_templates.pop(index)
+    return {"ok": True}
 
 # ── Custom overlays (header / footer / full) ──────────────────────────────────
 
