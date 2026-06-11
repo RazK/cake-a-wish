@@ -423,7 +423,8 @@
 
     /* ── Gallery grid (2xN, scrolls inside panel) ─────────────── */
     .gallery-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:10px;
-                    flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-width:none; }
+                    flex:1; min-height:0; overflow-y:auto; overflow-x:hidden;
+                    align-content:start; scrollbar-width:none; }
     .gallery-grid::-webkit-scrollbar { display:none; }
     /* template cell: image box + label below */
     .gg-cell { display:flex; flex-direction:column; gap:3px; cursor:pointer; min-width:0; }
@@ -432,7 +433,7 @@
     .gg-item { position:relative; border-radius:7px; overflow:hidden;
                border:2px solid var(--border); background:#111;
                transition:border-color .15s; }
-    .gg-item--photo { aspect-ratio:2/3; cursor:pointer; }
+    .gg-item--photo { height:130px; cursor:pointer; }
     .gg-item--photo:hover { border-color:var(--primary); }
     .gg-item--tmpl  { height:76px; background:#1a1628; }
     .gg-thumb { display:block; width:100%; height:100%; object-fit:cover; }

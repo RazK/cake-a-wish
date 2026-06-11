@@ -157,16 +157,9 @@ async def _status_loop():
     while True:
         await asyncio.sleep(1)
         active = (time.time() - _mediapipe_last_seen) < 30
-        with _settings_lock:
-            enabled           = _settings["enabled"]
-            sensitivity       = _settings["sensitivity"]
-            arduino_threshold = _settings["arduino_threshold"]
         _broadcast({
-            "arduino":           {"connected": _arduino.get_status()["connected"]},
-            "mediapipe":         {"active": active},
-            "enabled":           enabled,
-            "sensitivity":       sensitivity,
-            "arduino_threshold": arduino_threshold,
+            "arduino":   {"connected": _arduino.get_status()["connected"]},
+            "mediapipe": {"active": active},
         })
 
 
@@ -620,6 +613,15 @@ async def blow_stream(request: Request):
         _sse_clients.add(q)
 
     async def generate():
+        # Send current settings once on connect so the client can initialise sliders
+        with _settings_lock:
+            init = {
+                "enabled":           _settings["enabled"],
+                "sensitivity":       _settings["sensitivity"],
+                "arduino_threshold": _settings["arduino_threshold"],
+            }
+        yield f"data: {json.dumps(init)}\n\n"
+
         try:
             while True:
                 if await request.is_disconnected():

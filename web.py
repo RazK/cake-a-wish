@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import io
+import json
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -52,8 +53,25 @@ def _make_printer():
     if _printer_bt:
         return BTBrotherPrinter(_printer_bt)
     return BrotherPrinter(_printer_ip)
-_photos: list[dict] = []
-_saved_templates: list[dict] = []
+_DATA_DIR = Path("data")
+_PHOTOS_FILE = _DATA_DIR / "photos.json"
+_TEMPLATES_FILE = _DATA_DIR / "saved_templates.json"
+
+
+def _load_json(path: Path, default):
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return default
+
+
+def _save_json(path: Path, data) -> None:
+    _DATA_DIR.mkdir(exist_ok=True)
+    path.write_text(json.dumps(data))
+
+
+_photos: list[dict] = _load_json(_PHOTOS_FILE, [])
+_saved_templates: list[dict] = _load_json(_TEMPLATES_FILE, [])
 
 # ── Label helpers ─────────────────────────────────────────────────────────────
 
@@ -316,6 +334,7 @@ async def print_label(req: PrintRequest):
         raw_img = _decode_image(req.raw_data)
         _photos.insert(0, {"thumbnail": _thumbnail(raw_img), "raw_data": req.raw_data})
         del _photos[20:]
+        _save_json(_PHOTOS_FILE, _photos)
 
     return {"ok": True}
 
@@ -332,6 +351,7 @@ async def save_photo(req: PhotoSave):
     img = _decode_image(req.raw_data)
     _photos.insert(0, {"thumbnail": _thumbnail(img), "raw_data": req.raw_data})
     del _photos[20:]
+    _save_json(_PHOTOS_FILE, _photos)
     return {"ok": True}
 
 
@@ -340,6 +360,7 @@ async def delete_photo(index: int):
     if index < 0 or index >= len(_photos):
         raise HTTPException(404, "Not found")
     _photos.pop(index)
+    _save_json(_PHOTOS_FILE, _photos)
     return {"ok": True}
 
 # ── Saved templates ───────────────────────────────────────────────────────────
@@ -412,6 +433,7 @@ async def save_template(req: TemplateSave):
     thumb = await asyncio.to_thread(_template_thumbnail, processed)
     _saved_templates.insert(0, {"name": req.name, "thumbnail": thumb, "slots": processed})
     del _saved_templates[20:]
+    _save_json(_TEMPLATES_FILE, _saved_templates)
     return {"ok": True}
 
 
@@ -420,6 +442,7 @@ async def delete_saved_template(index: int):
     if index < 0 or index >= len(_saved_templates):
         raise HTTPException(404, "Not found")
     _saved_templates.pop(index)
+    _save_json(_TEMPLATES_FILE, _saved_templates)
     return {"ok": True}
 
 # ── Custom overlays (header / footer / full) ──────────────────────────────────
