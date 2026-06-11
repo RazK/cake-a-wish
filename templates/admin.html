@@ -562,12 +562,12 @@
       <div class="card action-bar">
         <div id="cd-progress"></div>
         <div id="bar-live">
-          <button class="btn btn-outline" onclick="doCapture()">📷 Capture</button>
-          <button class="btn btn-outline" onclick="doQuickPrint()">🖨️ Quick Print</button>
+          <button class="btn btn-outline" id="btn-capture" onclick="doCapture()">📷 Capture</button>
+          <button class="btn btn-outline" id="btn-quick-print" onclick="doQuickPrint()">🖨️ Quick Print</button>
         </div>
         <div id="bar-captured" style="display:none">
           <button class="btn btn-outline" onclick="doRetake()">↩️ Retake</button>
-          <button class="btn btn-primary" onclick="doPrint()">🖨️ Print</button>
+          <button class="btn btn-primary" id="btn-print" onclick="doPrint()">🖨️ Print</button>
         </div>
         <div id="bar-countdown" style="display:none">
           <button class="btn btn-outline" style="color:var(--red);background:var(--surface)" onclick="doRetake()"><kbd>Space</kbd> ✕ Cancel</button>
@@ -853,6 +853,17 @@ function _updatePrinter(d) {
     `<div class="pdet-row"><span class="pdet-key">${k}</span><span class="pdet-val${cls ? ' '+cls : ''}">${v}</span></div>`
   ).join('');
   if (detail.innerHTML !== newHtml) detail.innerHTML = newHtml;
+
+  // Print buttons — disabled + relabelled when printer offline
+  const _offline = !d.connected;
+  const _offLabel = '🖨️ Not connected';
+  ['btn-print', 'btn-quick-print'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.disabled = _offline;
+    const _label = id === 'btn-print' ? '🖨️ Print' : '🖨️ Quick Print';
+    btn.textContent = _offline ? _offLabel : _label;
+  });
 
   // Canvas resize
   const canvas = document.getElementById('canvas');
@@ -1263,6 +1274,8 @@ try {
   await vid.play();
 } catch (err) {
   setCamPstat('err', 'camera unavailable');
+  const btnCap = document.getElementById('btn-capture');
+  if (btnCap) { btnCap.disabled = true; btnCap.textContent = '📷 No camera'; }
   throw err;
 }
 
