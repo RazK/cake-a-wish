@@ -6,7 +6,7 @@
   <title>Cake A Wish — Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Handjet&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Handjet:wght@100..900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     /* ── Design Tokens ─────────────────────────────────────────── */
     :root {
@@ -22,6 +22,7 @@
       --sub:        #8B83A8;
       --muted:      #B8B0D0;
       --green:      #3EBD87;
+      --cyan:       #22D3EE;
       --red:        #E05F7B;
       --amber:      #F59E0B;
       --col-width:  260px;
@@ -32,8 +33,8 @@
     html, body { height: 100%; overflow: hidden; }
 
     body {
-      font-family: 'Poppins', sans-serif;
-      font-size: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
       color: var(--text);
       background: linear-gradient(150deg, var(--bg-from), var(--bg-to)) fixed;
       display: flex;
@@ -114,23 +115,35 @@
 
     .canvas-wrap {
       flex: 1;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 8px;
       overflow: hidden;
+      padding: 16px 0;
+    }
+
+    .label-frame {
+      flex-shrink: 0;
+      max-height: 65%;
+      display: flex;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 6px 32px rgba(44, 38, 64, .22);
+      padding: 8px 6px;
     }
 
     #canvas {
-      max-width: min(100%, 320px);
+      display: block;
+      max-width: 100%;
       max-height: 100%;
+      min-height: 0;
       width: auto;
       height: auto;
-      border-radius: 8px;
-      box-shadow: 0 6px 32px rgba(44, 38, 64, .22);
+      border-radius: 3px;
       image-rendering: pixelated;
-      background: rgba(255,255,255,0.18);
     }
 
     .canvas-info {
@@ -247,11 +260,11 @@
     .blow-row.is-combo .blow-track { height:8px; }
     .blow-row.is-combo .blow-lbl   { font-weight:600; }
     .blow-fill { height:100%; width:0%; border-radius:3px; }
-    .blow-ct   { font-size:0.62rem; color:var(--muted); min-width:18px; text-align:right; flex-shrink:0; }
+
 
     /* Arduino level bar */
     .level-track  { position:relative; height:3px; background:var(--ghost); border-radius:2px; }
-    .level-fill   { height:100%; width:0%; background:var(--amber); border-radius:2px; transition:width .05s; }
+    .level-fill   { height:100%; width:0%; background:var(--primary); border-radius:2px; transition:width .05s; }
     .level-thresh { position:absolute; top:-2px; width:2px; height:7px;
                     background:var(--sub); border-radius:1px; opacity:.5; }
 
@@ -267,7 +280,17 @@
     .num-input:focus { outline:none; border-color:var(--primary); }
 
     /* ── Panel status indicator ────────────────────────────────── */
-    .pstat      { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
+    .card-head  { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .card-head .card-label { margin-bottom:0; }
+    .card-head .pstat      { margin-bottom:0; }
+
+    /* ── Toggle pill ───────────────────────────────────────────── */
+    .tog-pill { display:flex; background:var(--ghost); border-radius:99px; padding:2px; cursor:pointer; gap:0; }
+    .tog-opt  { padding:2px 10px; border-radius:99px; font-size:0.7rem; font-weight:600;
+                color:var(--muted); transition:background .15s, color .15s, box-shadow .15s; }
+    .tog-pill.is-on  .tog-opt.opt-on  { background:var(--green); color:#fff; box-shadow:0 1px 4px rgba(44,38,64,.15); }
+    .tog-pill.is-off .tog-opt.opt-off { background:var(--surface);  color:var(--text); box-shadow:0 1px 4px rgba(44,38,64,.12); }
+    .pstat      { display:flex; align-items:center; gap:4px; margin-bottom:8px; }
     .pstat-dot  { width:7px; height:7px; border-radius:50%; background:var(--muted);
                   flex-shrink:0; transition:background .3s; }
     .pstat-text { font-size:0.72rem; font-weight:600; color:var(--muted); transition:color .3s; }
@@ -277,13 +300,50 @@
     .pstat.warn .pstat-text { color:var(--amber); }
     .pstat.err  .pstat-dot  { background:var(--red); }
     .pstat.err  .pstat-text { color:var(--red); }
+    .pstat.blow .pstat-dot  { background:var(--cyan); }
+    .pstat.blow .pstat-text { color:var(--cyan); }
     .pstat-detail { font-size:0.68rem; color:var(--sub); margin-top:-4px; margin-bottom:8px; }
+
+    /* ── Printer detail grid ───────────────────────────────────── */
+    .pdet { display:flex; flex-direction:column; gap:3px; margin-top:4px; }
+    .pdet-row { display:flex; align-items:baseline; gap:6px; }
+    .pdet-key { font-size:0.6rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+                color:var(--muted); flex-shrink:0; width:42px; }
+    .pdet-val { font-size:0.68rem; color:var(--text); flex:1; text-align:right;
+                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pdet-val.err { color:var(--red); }
+
+    /* ── Action button (small inline) ─────────────────────────── */
+    .act-btn { font:inherit; font-size:0.68rem; font-weight:600; color:var(--primary);
+               background:none; border:none; padding:0; cursor:pointer; white-space:nowrap;
+               text-decoration:none; flex-shrink:0; }
+    .act-btn:hover { color:var(--primary-dk); }
+    .act-btn--danger { color:var(--muted); }
+    .act-btn--danger:hover { color:var(--red); }
 
     /* ── Camera preview ─────────────────────────────────────────── */
     #cam-preview {
       display: block; width: 100%; aspect-ratio: 4/3;
       border-radius: 6px; background: var(--ghost);
     }
+
+    /* ── Template slot ──────────────────────────────────────────── */
+    .tmpl-slot      { display:flex; flex-direction:column; gap:4px; padding:3px 0; }
+    .tmpl-slot-head { display:flex; align-items:center; gap:5px; min-height:20px; }
+    .tmpl-slot-name { font-size:0.68rem; font-weight:700; letter-spacing:.06em;
+                      text-transform:uppercase; color:var(--sub); flex:1; }
+    .tmpl-file-name { font-size:0.66rem; color:var(--green); flex-shrink:1; min-width:0;
+                      max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tmpl-divider   { border:0; border-top:1px solid var(--border); margin:4px 0; }
+
+    /* ── Alignment pill (4-option; dark active = selection, not on/off) ── */
+    .align-pill { display:flex; background:var(--ghost); border-radius:99px;
+                  padding:2px; margin-top:3px; width:100%; }
+    .align-opt  { flex:1; text-align:center; padding:3px 4px; border-radius:99px;
+                  font-size:0.62rem; font-weight:600; color:var(--muted); cursor:pointer;
+                  user-select:none; transition:background .15s, color .15s, box-shadow .15s; }
+    .align-opt.active { background:var(--text); color:var(--surface);
+                        box-shadow:0 1px 4px rgba(44,38,64,.15); }
   </style>
 </head>
 <body>
@@ -300,20 +360,24 @@
 
       <!-- Printer -->
       <div class="card">
-        <div class="card-label">Printer</div>
-        <div class="pstat warn" id="printer-pstat">
-          <span class="pstat-dot"></span>
-          <span class="pstat-text" id="printer-status-text">checking…</span>
+        <div class="card-head">
+          <div class="card-label">Printer</div>
+          <div class="pstat warn" id="printer-pstat">
+            <span class="pstat-text" id="printer-status-text">checking…</span>
+            <span class="pstat-dot"></span>
+          </div>
         </div>
-        <div class="pstat-detail" id="printer-detail">—</div>
+        <div class="pdet" id="printer-detail"></div>
       </div>
 
       <!-- Camera -->
       <div class="card" id="cam-card">
-        <div class="card-label">Camera</div>
-        <div class="pstat" id="cam-pstat">
-          <span class="pstat-dot"></span>
-          <span class="pstat-text" id="cam-status">initialising…</span>
+        <div class="card-head">
+          <div class="card-label">Camera</div>
+          <div class="pstat" id="cam-pstat">
+            <span class="pstat-text" id="cam-status">initialising…</span>
+            <span class="pstat-dot"></span>
+          </div>
         </div>
         <canvas id="cam-preview"></canvas>
         <div class="level-track" style="margin-top:8px">
@@ -321,11 +385,6 @@
           <div class="level-thresh" id="cam-nw-thresh" style="left:62%"></div>
         </div>
         <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="cam-nw-val">—</div>
-        <div class="blow-row" style="margin-top:6px">
-          <span class="blow-lbl" style="color:var(--primary)">Blow</span>
-          <div class="blow-track"><div class="blow-fill" id="cam-blow-bar" style="background:var(--primary)"></div></div>
-          <span class="blow-ct" id="cam-blow-ct">0</span>
-        </div>
         <div class="ctrl-row" style="margin-top:6px">
           <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">lip threshold</span>
           <input type="range" id="adm-sens" min="20" max="80" value="50">
@@ -335,21 +394,18 @@
 
       <!-- Arduino -->
       <div class="card" id="ard-card">
-        <div class="card-label">Arduino</div>
-        <div class="pstat" id="ard-pstat">
-          <span class="pstat-dot"></span>
-          <span class="pstat-text" id="ard-status-text">disconnected</span>
+        <div class="card-head">
+          <div class="card-label">Arduino</div>
+          <div class="pstat" id="ard-pstat">
+            <span class="pstat-text" id="ard-status-text">disconnected</span>
+            <span class="pstat-dot"></span>
+          </div>
         </div>
         <div class="level-track">
           <div class="level-fill"   id="btp-level-fill"></div>
           <div class="level-thresh" id="btp-level-thresh" style="left:80%"></div>
         </div>
         <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="ard-level-val">—</div>
-        <div class="blow-row" style="margin-top:6px">
-          <span class="blow-lbl" style="color:var(--amber)">Blow</span>
-          <div class="blow-track"><div class="blow-fill" id="ard-blow-bar" style="background:var(--amber)"></div></div>
-          <span class="blow-ct" id="ard-blow-ct">0</span>
-        </div>
         <div class="ctrl-row" style="margin-top:6px">
           <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">threshold</span>
           <input type="range" id="adm-ard-thresh" min="1" max="200" value="95">
@@ -359,25 +415,20 @@
 
       <!-- Blow to Print -->
       <div class="card grow">
-        <div class="card-label">Blow to Print</div>
-        <div class="btp-body">
-
-          <div class="btp-row" style="justify-content:space-between">
-            <span style="font-size:0.72rem;font-weight:600">Quick print on blow</span>
-            <div class="seg">
-              <button class="seg-btn" id="btp-on"  onclick="btpSetEnabled(true)">On</button>
-              <button class="seg-btn active" id="btp-off" onclick="btpSetEnabled(false)">Off</button>
-            </div>
+        <div class="card-head">
+          <div class="card-label">Blow to Print</div>
+          <div class="tog-pill is-off" id="btp-toggle" onclick="btpSetEnabled(!this.classList.contains('is-on'))">
+            <span class="tog-opt opt-on">On</span>
+            <span class="tog-opt opt-off">Off</span>
           </div>
-
-          <hr class="btp-divider">
+        </div>
+        <div class="btp-body">
 
           <div class="blow-row is-combo">
             <span class="blow-lbl" style="color:var(--green)">Blow</span>
             <div class="blow-track">
               <div class="blow-fill" id="adm-bar-comb" style="background:var(--green)"></div>
             </div>
-            <span class="blow-ct" id="adm-cnt-comb">0</span>
           </div>
 
         </div>
@@ -389,7 +440,9 @@
     <div class="canvas-area">
 
       <div class="canvas-wrap">
-        <canvas id="canvas" width="696" height="1044"></canvas>
+        <div class="label-frame">
+          <canvas id="canvas" width="696" height="1044"></canvas>
+        </div>
         <div class="canvas-info" id="canvas-info">62red · 696 × 1044 px</div>
       </div>
 
@@ -403,8 +456,56 @@
     <div class="right-col">
 
       <div class="card">
-        <div class="card-label">Template</div>
-        <div class="placeholder">[ Clean · Bold · Retro ]</div>
+        <div class="card-label" style="margin-bottom:10px">Template</div>
+
+        <!-- Full -->
+        <div class="tmpl-slot">
+          <div class="tmpl-slot-head">
+            <span class="tmpl-slot-name">Full</span>
+            <label class="act-btn" id="overlay-load-full" for="overlay-input-full">Load</label>
+            <span  id="overlay-file-full" class="tmpl-file-name" style="display:none"></span>
+            <input type="file" id="overlay-input-full" accept="image/png" style="display:none">
+            <button id="overlay-remove-full" class="act-btn act-btn--danger" style="display:none" onclick="removeOverlay('full')">✕</button>
+          </div>
+        </div>
+
+        <div class="tmpl-divider"></div>
+
+        <!-- Header -->
+        <div class="tmpl-slot">
+          <div class="tmpl-slot-head">
+            <span class="tmpl-slot-name">Header</span>
+            <label class="act-btn" id="overlay-load-header" for="overlay-input-header">Load</label>
+            <span  id="overlay-file-header" class="tmpl-file-name" style="display:none"></span>
+            <input type="file" id="overlay-input-header" accept="image/png" style="display:none">
+            <button id="overlay-remove-header" class="act-btn act-btn--danger" style="display:none" onclick="removeOverlay('header')">✕</button>
+          </div>
+          <div class="align-pill" id="align-header" style="display:none">
+            <span class="align-opt active" data-val="full"   onclick="setAlign('header','full')">Full</span>
+            <span class="align-opt"        data-val="left"   onclick="setAlign('header','left')">Left</span>
+            <span class="align-opt"        data-val="center" onclick="setAlign('header','center')">Center</span>
+            <span class="align-opt"        data-val="right"  onclick="setAlign('header','right')">Right</span>
+          </div>
+        </div>
+
+        <div class="tmpl-divider"></div>
+
+        <!-- Footer -->
+        <div class="tmpl-slot">
+          <div class="tmpl-slot-head">
+            <span class="tmpl-slot-name">Footer</span>
+            <label class="act-btn" id="overlay-load-footer" for="overlay-input-footer">Load</label>
+            <span  id="overlay-file-footer" class="tmpl-file-name" style="display:none"></span>
+            <input type="file" id="overlay-input-footer" accept="image/png" style="display:none">
+            <button id="overlay-remove-footer" class="act-btn act-btn--danger" style="display:none" onclick="removeOverlay('footer')">✕</button>
+          </div>
+          <div class="align-pill" id="align-footer" style="display:none">
+            <span class="align-opt active" data-val="full"   onclick="setAlign('footer','full')">Full</span>
+            <span class="align-opt"        data-val="left"   onclick="setAlign('footer','left')">Left</span>
+            <span class="align-opt"        data-val="center" onclick="setAlign('footer','center')">Center</span>
+            <span class="align-opt"        data-val="right"  onclick="setAlign('footer','right')">Right</span>
+          </div>
+        </div>
       </div>
 
       <div class="card">
@@ -432,12 +533,13 @@
 <script>
 // ── Blow to Print ─────────────────────────────────────────────────
 
-const _BLOW_WIN = 2000;
-const _blowAt = { mp: 0, ard: 0, comb: 0 };
-const _blowCt = { mp: 0, ard: 0, comb: 0 };
+window.ardBlowing = false;
+window.mpBlowing  = false;
 
-const _BLOW_BARS = { mp: 'cam-blow-bar', ard: 'ard-blow-bar', comb: 'adm-bar-comb' };
-const _BLOW_CTS  = { mp: 'cam-blow-ct',  ard: 'ard-blow-ct',  comb: 'adm-cnt-comb' };
+function _updateCombBar() {
+  document.getElementById('adm-bar-comb').style.width =
+    (window.ardBlowing && window.mpBlowing) ? '100%' : '0%';
+}
 
 function btpSetEnabled(on) {
   fetch('/blow/settings', {
@@ -449,21 +551,8 @@ function btpSetEnabled(on) {
 }
 
 function _btpApplyEnabled(on) {
-  document.getElementById('btp-on').classList.toggle('active', on);
-  document.getElementById('btp-on').classList.toggle('is-on', on);
-  document.getElementById('btp-off').classList.toggle('active', !on);
+  document.getElementById('btp-toggle').className = 'tog-pill ' + (on ? 'is-on' : 'is-off');
 }
-
-// Drain all three blow bars via rAF
-(function _drain() {
-  const now = performance.now();
-  for (const key of ['mp', 'ard', 'comb']) {
-    const pct = Math.max(0, 1 - (now - _blowAt[key]) / _BLOW_WIN) * 100;
-    const el = document.getElementById(_BLOW_BARS[key]);
-    if (el) el.style.width = pct + '%';
-  }
-  requestAnimationFrame(_drain);
-})();
 
 // Lip threshold (read by the MediaPipe module)
 window.btpThreshold = 0.50;
@@ -492,6 +581,148 @@ _ardThreshEl.addEventListener('change', () => {
   });
 });
 
+// ── Custom overlays (header / footer / full) ─────────────────────
+// Each slot: { bitmap: ImageBitmap, name: string, align: 'full'|'left'|'center'|'right' }
+
+window.customOverlays = { header: null, footer: null, full: null };
+
+function setAlign(slot, val) {
+  const ov = window.customOverlays[slot];
+  if (!ov) return;
+  ov.align = val;
+  document.querySelectorAll('#align-' + slot + ' .align-opt').forEach(el => {
+    el.classList.toggle('active', el.dataset.val === val);
+  });
+}
+
+function _setSlotUI(slot, name) {
+  document.getElementById('overlay-load-'   + slot).style.display = name ? 'none' : '';
+  const fn = document.getElementById('overlay-file-' + slot);
+  fn.textContent  = name || '';
+  fn.style.display = name ? '' : 'none';
+  document.getElementById('overlay-remove-' + slot).style.display = name ? '' : 'none';
+  const ap = document.getElementById('align-' + slot);
+  if (ap) ap.style.display = name ? '' : 'none';
+}
+
+async function _loadOverlayBlob(slot, blob, name) {
+  if (slot === 'full') {
+    if (window.customOverlays.header) { window.customOverlays.header = null; _setSlotUI('header', null); }
+    if (window.customOverlays.footer) { window.customOverlays.footer = null; _setSlotUI('footer', null); }
+  } else {
+    if (window.customOverlays.full) { window.customOverlays.full = null; _setSlotUI('full', null); }
+  }
+  const bitmap = await createImageBitmap(blob);
+  window.customOverlays[slot] = { bitmap, name, align: 'full' };
+  _setSlotUI(slot, name);
+}
+
+// Load persisted overlays on page load
+['header', 'footer', 'full'].forEach(slot => {
+  fetch('/overlay/' + slot).then(async r => {
+    if (r.ok) await _loadOverlayBlob(slot, await r.blob(), slot + '.png');
+  }).catch(() => {});
+});
+
+['header', 'footer', 'full'].forEach(slot => {
+  document.getElementById('overlay-input-' + slot).addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file);
+    if (slot === 'full') {
+      await Promise.all([
+        fetch('/overlay/header', { method: 'DELETE' }),
+        fetch('/overlay/footer', { method: 'DELETE' }),
+      ]);
+    } else {
+      await fetch('/overlay/full', { method: 'DELETE' });
+    }
+    await fetch('/overlay/' + slot, { method: 'POST', body: form });
+    await _loadOverlayBlob(slot, file, file.name);
+    e.target.value = '';
+  });
+});
+
+async function removeOverlay(slot) {
+  await fetch('/overlay/' + slot, { method: 'DELETE' });
+  window.customOverlays[slot] = null;
+  _setSlotUI(slot, null);
+}
+
+// ── Printer polling ───────────────────────────────────────────────
+
+window.printerState = { label_w: 696, label_h: 1044, label_id: '62red', connected: false };
+
+function _updatePrinter(d) {
+  window.printerState = d;
+
+  const pstat      = document.getElementById('printer-pstat');
+  const statusText = document.getElementById('printer-status-text');
+
+  const clsMap = { online: 'ok', printing: 'ok', checking: 'warn', error: 'err', offline: '' };
+  const lblMap = { online: 'online', printing: 'printing…', checking: 'checking…', error: 'error', offline: 'offline' };
+  const newCls  = 'pstat' + (clsMap[d.status] ? ' ' + clsMap[d.status] : '');
+  const newText = lblMap[d.status] ?? d.status;
+
+  if (pstat.className        !== newCls)  pstat.className        = newCls;
+  if (statusText.textContent !== newText) statusText.textContent = newText;
+
+  // Printer detail grid
+  const detail = document.getElementById('printer-detail');
+  const rows = [];
+  if (d.connection_type === 'bt') {
+    rows.push(['Mode', 'Bluetooth']);
+    if (d.bt_device) rows.push(['Dev', d.bt_device]);
+  } else {
+    rows.push(['Mode', 'WiFi']);
+    if (d.ip) rows.push(['IP', d.ip]);
+  }
+  if (d.model) rows.push(['Model', d.model]);
+  if (d.connected) {
+    if (d.media_w_mm) {
+      const mmH = d.media_h_mm ? d.media_h_mm + ' mm' : '∞ (cont.)';
+      rows.push(['Media', d.media_w_mm + ' × ' + mmH]);
+    }
+    if (d.label_id) rows.push(['Label', d.label_id]);
+    if (d.label_w && d.label_h) rows.push(['Px', d.label_w + ' × ' + d.label_h]);
+    if (d.phase)  rows.push(['Phase', d.phase]);
+  }
+  if (d.errors && d.errors.length) {
+    rows.push(['Error', d.errors.join(' · '), 'err']);
+  }
+  const newHtml = rows.map(([k, v, cls]) =>
+    `<div class="pdet-row"><span class="pdet-key">${k}</span><span class="pdet-val${cls ? ' '+cls : ''}">${v}</span></div>`
+  ).join('');
+  if (detail.innerHTML !== newHtml) detail.innerHTML = newHtml;
+
+  // Canvas resize
+  const canvas = document.getElementById('canvas');
+  const info   = document.getElementById('canvas-info');
+  if (d.connected && d.label_w && d.label_h && (canvas.width !== d.label_w || canvas.height !== d.label_h)) {
+    canvas.width             = d.label_w;
+    canvas.height            = d.label_h;
+    canvas.style.aspectRatio = d.label_w + ' / ' + d.label_h;
+    const newInfo = d.label_id + ' · ' + d.label_w + ' × ' + d.label_h + ' px';
+    if (info.textContent !== newInfo) info.textContent = newInfo;
+  }
+  // Ensure label-frame max-height is a concrete px value (fallback for % resolution in nested flex)
+  const frame = canvas.closest('.label-frame');
+  const wrap  = canvas.closest('.canvas-wrap');
+  if (frame && wrap && wrap.clientHeight) {
+    const limit = Math.floor(wrap.clientHeight * 0.65) + 'px';
+    if (frame.style.maxHeight !== limit) frame.style.maxHeight = limit;
+  }
+}
+
+(async function _pollPrinter() {
+  try {
+    const r = await fetch('/printer');
+    if (r.ok) _updatePrinter(await r.json());
+  } catch {}
+  setTimeout(_pollPrinter, 2000);
+})();
+
 // ── SSE ───────────────────────────────────────────────────────────
 const _sse = new EventSource('/blow/stream');
 _sse.onmessage = e => {
@@ -507,23 +738,8 @@ _sse.onmessage = e => {
       Math.min(96, (dispThresh / 200) * 100) + '%';
     document.getElementById('ard-level-val').textContent =
       al.level + ' / ' + dispThresh;
-    return;
-  }
-
-  if (d.event === 'blow') {
-    const key      = d.source === 'mediapipe' ? 'mp' : 'ard';
-    const otherKey = key === 'mp' ? 'ard' : 'mp';
-    const pNow     = performance.now();
-    _blowAt[key]   = pNow;
-    _blowCt[key]++;
-    const ct = document.getElementById(_BLOW_CTS[key]);
-    if (ct) ct.textContent = _blowCt[key];
-    if (pNow - _blowAt[otherKey] < _BLOW_WIN) {
-      _blowAt.comb = pNow;
-      _blowCt.comb++;
-      const combCt = document.getElementById(_BLOW_CTS.comb);
-      if (combCt) combCt.textContent = _blowCt.comb;
-    }
+    window.ardBlowing = al.level >= dispThresh;
+    _updateCombBar();
     return;
   }
 
@@ -596,7 +812,37 @@ try {
 
 setCamPstat('ok', 'ready');
 
-let mpState = 'ready', consec = 0, flashUntil = 0;
+let mpState = 'ready', consec = 0;
+
+// ── Canvas compositing helpers ─────────────────────────────────────
+
+function _slotDisplayH(slot, cW) {
+  const bm = slot.bitmap;
+  const w = slot.align === 'full' ? cW : Math.round(cW / 2);
+  return Math.round(bm.height * w / bm.width);
+}
+
+function _drawSlotBitmap(ctx, slot, cW, cH, anchor) {
+  const bm = slot.bitmap;
+  const dW = slot.align === 'full' ? cW : Math.round(cW / 2);
+  const dH = Math.round(bm.height * dW / bm.width);
+  let dX = 0;
+  if (slot.align === 'center') dX = Math.round((cW - dW) / 2);
+  else if (slot.align === 'right') dX = cW - dW;
+  ctx.drawImage(bm, dX, anchor === 'top' ? 0 : cH - dH, dW, dH);
+}
+
+function _coverCropMirror(ctx, src, srcW, srcH, dstX, dstY, dstW, dstH) {
+  if (dstW <= 0 || dstH <= 0) return;
+  const sc = Math.max(dstW / srcW, dstH / srcH);
+  const cropW = dstW / sc, cropH = dstH / sc;
+  const sx = (srcW - cropW) / 2, sy = (srcH - cropH) / 2;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(dstX, dstY, dstW, dstH); ctx.clip();
+  ctx.translate(dstX + dstW, 0); ctx.scale(-1, 1);
+  ctx.drawImage(src, sx, sy, cropW, cropH, 0, dstY, dstW, dstH);
+  ctx.restore();
+}
 
 function tick(now) {
   requestAnimationFrame(tick);
@@ -624,7 +870,7 @@ function tick(now) {
     if (mpState === 'ready') {
       consec = nw <= thr ? consec + 1 : 0;
       if (consec >= MIN_FRAMES) {
-        mpState = 'blowing'; flashUntil = now + 600; consec = 0;
+        mpState = 'blowing'; consec = 0;
         fetch('/blow/event', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -635,12 +881,16 @@ function tick(now) {
       mpState = 'ready'; consec = 0;
     }
 
-    const col = now < flashUntil ? '#E05F7B' : '#7C6FF7';
+    const blowing = mpState === 'blowing';
+    window.mpBlowing = blowing;
+    _updateCombBar();
+
+    const col = blowing ? '#22D3EE' : '#7C6FF7';
 
     // Live nw bar in Camera panel
     const nwPct = Math.min(100, (nw / 0.8) * 100);
     document.getElementById('cam-nw-fill').style.width      = nwPct + '%';
-    document.getElementById('cam-nw-fill').style.background = now < flashUntil ? 'var(--red)' : 'var(--primary)';
+    document.getElementById('cam-nw-fill').style.background = col;
     document.getElementById('cam-nw-thresh').style.left     = Math.min(96, (thr / 0.8) * 100) + '%';
     document.getElementById('cam-nw-val').textContent       = nw.toFixed(3) + ' / ' + thr.toFixed(2);
 
@@ -658,17 +908,38 @@ function tick(now) {
     ctx.moveTo((1 - ml.x) * W, ml.y * H);
     ctx.lineTo((1 - mr.x) * W, mr.y * H);
     ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+
+    // Blow border on cam-preview
+    if (blowing) {
+      ctx.strokeStyle = '#22D3EE'; ctx.lineWidth = 5;
+      ctx.strokeRect(2, 2, W - 4, H - 4);
+    }
   }
 
-  // Blow flash border
-  if (now < flashUntil) {
-    ctx.strokeStyle = '#E05F7B'; ctx.lineWidth = 5;
-    ctx.strokeRect(2, 2, W - 4, H - 4);
+  // ── Center canvas: camera cover-crop + overlays ──────────────────
+  const mainCanvas = document.getElementById('canvas');
+  const mc = mainCanvas.getContext('2d');
+  const cW = mainCanvas.width, cH = mainCanvas.height;
+  mc.clearRect(0, 0, cW, cH);
+  const { header, footer, full } = window.customOverlays;
+  if (full) {
+    _coverCropMirror(mc, vid, W, H, 0, 0, cW, cH);
+    mc.drawImage(full.bitmap, 0, 0, cW, cH);
+  } else {
+    // 'full' alignment pushes the camera; left/center/right overlay on top of it
+    const hH = (header && header.align === 'full') ? _slotDisplayH(header, cW) : 0;
+    const fH = (footer && footer.align === 'full') ? _slotDisplayH(footer, cW) : 0;
+    _coverCropMirror(mc, vid, W, H, 0, hH, cW, Math.max(0, cH - hH - fH));
+    if (header) _drawSlotBitmap(mc, header, cW, cH, 'top');
+    if (footer) _drawSlotBitmap(mc, footer, cW, cH, 'bottom');
   }
 
   if (lms && lms.length > 0) {
-    setCamPstat(mpState === 'blowing' ? 'warn' : 'ok', mpState === 'blowing' ? 'blow!' : 'face detected');
+    setCamPstat(mpState === 'blowing' ? 'blow' : 'ok', mpState === 'blowing' ? 'blowing' : 'face detected');
   } else {
+    mpState = 'ready'; consec = 0;
+    window.mpBlowing = false;
+    _updateCombBar();
     setCamPstat('', 'no face');
     document.getElementById('cam-nw-fill').style.width = '0%';
     document.getElementById('cam-nw-val').textContent  = '—';

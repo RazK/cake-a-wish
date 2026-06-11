@@ -3,9 +3,10 @@ import base64
 import io
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -18,6 +19,12 @@ from label_printer.frames import REGISTRY
 from label_printer.printer import BrotherPrinter, BTBrotherPrinter
 
 # ── State ────────────────────────────────────────────────────────────────────
+
+_OVERLAY_PATHS = {
+    "header": Path("overlay_header.png"),
+    "footer": Path("overlay_footer.png"),
+    "full":   Path("overlay_full.png"),
+}
 
 _FALLBACK_LABEL = "62red"
 _FALLBACK_W, _FALLBACK_H = 696, 1044
@@ -115,28 +122,48 @@ def _apply_frame(img: Image.Image, template_id: Optional[str]) -> Image.Image:
 
 async def _monitor_loop():
     global _printer_state
+    _last_label              = _FALLBACK_LABEL
+    _last_w, _last_h         = _FALLBACK_W, _FALLBACK_H
+    _last_media_w_mm         = 0
+    _last_media_h_mm         = 0
+    _last_model              = "QL-820NWB"
     while True:
         bt = _printer_bt
         ip = _printer_ip
         delay = 1.0
         try:
             printer = _make_printer()
-            result = await asyncio.to_thread(printer.query_status)
+            result  = await asyncio.to_thread(printer.query_status)
             connected = result["connected"]
+            model     = getattr(printer, "model", "QL-820NWB")
 
             if bt:
-                # BT: no status info available — use fallback label
                 label_id, w, h = _FALLBACK_LABEL, _FALLBACK_W, _FALLBACK_H
+                media_w_mm, media_h_mm = 0, 0
                 errors, phase = [], None
-                pill = "online" if connected else "offline"
+                pill  = "online" if connected else "offline"
                 if not connected:
                     delay = 2.0
             else:
-                st = result.get("status") or {}
-                label_id = _detect_label(st, printer.model)
-                w, h = _label_dims(label_id)
-                errors = st.get("errors", [])
-                phase = st.get("phase_type")
+                st         = result.get("status") or {}
+                errors     = st.get("errors", [])
+                phase      = st.get("phase_type")
+                raw_mw     = st.get("media_width",  0)
+                raw_mh     = st.get("media_length", 0)
+                if raw_mw:
+                    label_id       = _detect_label(st, model)
+                    w, h           = _label_dims(label_id)
+                    _last_label    = label_id
+                    _last_w, _last_h = w, h
+                    _last_media_w_mm = raw_mw
+                    _last_media_h_mm = raw_mh
+                    _last_model    = model
+                else:
+                    label_id   = _last_label
+                    w, h       = _last_w, _last_h
+                media_w_mm = _last_media_w_mm
+                media_h_mm = _last_media_h_mm
+                model      = _last_model
                 if not connected:
                     pill, delay = "offline", 0.3
                 elif errors:
@@ -149,16 +176,20 @@ async def _monitor_loop():
             _printer_state = {
                 "ip": ip, "bt_device": bt,
                 "connection_type": "bt" if bt else "wifi",
+                "model": model,
                 "connected": connected,
                 "label_id": label_id, "label_w": w, "label_h": h,
+                "media_w_mm": media_w_mm, "media_h_mm": media_h_mm,
                 "status": pill, "phase": phase, "errors": errors,
             }
         except Exception as exc:
             _printer_state = {
                 "ip": ip, "bt_device": bt,
                 "connection_type": "bt" if bt else "wifi",
+                "model": _last_model,
                 "connected": False,
                 "label_id": _FALLBACK_LABEL, "label_w": _FALLBACK_W, "label_h": _FALLBACK_H,
+                "media_w_mm": 0, "media_h_mm": 0,
                 "status": "offline", "phase": None, "errors": [str(exc)],
             }
             delay = 0.3
@@ -278,6 +309,34 @@ async def print_label(req: ImageRequest):
 @app.get("/history")
 async def get_history():
     return _history
+
+# ── Custom overlays (header / footer / full) ──────────────────────────────────
+
+@app.post("/overlay/{slot}")
+async def upload_overlay(slot: str, file: UploadFile = File(...)):
+    if slot not in _OVERLAY_PATHS:
+        raise HTTPException(400, "Invalid slot — use header, footer, or full")
+    data = await file.read()
+    _OVERLAY_PATHS[slot].write_bytes(data)
+    return {"ok": True}
+
+
+@app.get("/overlay/{slot}")
+async def get_overlay_file(slot: str):
+    if slot not in _OVERLAY_PATHS:
+        raise HTTPException(400, "Invalid slot")
+    path = _OVERLAY_PATHS[slot]
+    if not path.exists():
+        raise HTTPException(404, "No overlay for this slot")
+    return Response(content=path.read_bytes(), media_type="image/png")
+
+
+@app.delete("/overlay/{slot}")
+async def delete_overlay_file(slot: str):
+    if slot not in _OVERLAY_PATHS:
+        raise HTTPException(400, "Invalid slot")
+    _OVERLAY_PATHS[slot].unlink(missing_ok=True)
+    return {"ok": True}
 
 # ── Dev entry point ───────────────────────────────────────────────────────────
 
