@@ -215,29 +215,172 @@
       font-size: 0.78rem;
       padding: 2px 0;
     }
+
+    /* ── Segmented control ─────────────────────────────────────── */
+    .seg { display:flex; background:var(--ghost); border-radius:8px; padding:2px; }
+    .seg-btn { flex:1; padding:3px 12px; border:none; border-radius:6px; background:transparent;
+               font:inherit; font-size:0.72rem; font-weight:600; color:var(--muted); cursor:pointer;
+               transition:background .15s, color .15s, box-shadow .15s; }
+    .seg-btn.active { background:var(--surface); color:var(--text);
+                      box-shadow:0 1px 4px rgba(44,38,64,.12); }
+    .seg-btn.active.is-on { color:var(--primary); }
+
+    /* ── Pill ──────────────────────────────────────────────────── */
+    .pill { display:inline-flex; align-items:center; gap:4px; font-size:0.66rem; font-weight:600;
+            padding:2px 8px; border-radius:99px; border:1.5px solid var(--muted); color:var(--muted);
+            white-space:nowrap; transition:border-color .2s, color .2s; }
+    .pill.is-ok { border-color:var(--green);   color:var(--green); }
+    .pill.is-on { border-color:var(--primary); color:var(--primary); }
+
+    /* ── Blow card layout ──────────────────────────────────────── */
+    .btp-body    { display:flex; flex-direction:column; gap:8px; }
+    .btp-row     { display:flex; align-items:center; gap:8px; }
+    .btp-section { display:flex; flex-direction:column; gap:5px; }
+    .btp-section-hd { font-size:0.6rem; font-weight:700; letter-spacing:.08em;
+                       text-transform:uppercase; color:var(--muted); }
+    .btp-divider { border:none; border-top:1px solid var(--border); margin:0; }
+
+    /* blow indicator bars */
+    .blow-row  { display:flex; align-items:center; gap:8px; }
+    .blow-lbl  { font-size:0.69rem; flex-shrink:0; width:68px; }
+    .blow-track { flex:1; height:5px; background:var(--ghost); border-radius:3px; overflow:hidden; }
+    .blow-row.is-combo .blow-track { height:8px; }
+    .blow-row.is-combo .blow-lbl   { font-weight:600; }
+    .blow-fill { height:100%; width:0%; border-radius:3px; }
+    .blow-ct   { font-size:0.62rem; color:var(--muted); min-width:18px; text-align:right; flex-shrink:0; }
+
+    /* Arduino level bar */
+    .level-track  { position:relative; height:3px; background:var(--ghost); border-radius:2px; }
+    .level-fill   { height:100%; width:0%; background:var(--amber); border-radius:2px; transition:width .05s; }
+    .level-thresh { position:absolute; top:-2px; width:2px; height:7px;
+                    background:var(--sub); border-radius:1px; opacity:.5; }
+
+    /* control rows */
+    .ctrl-row { display:flex; align-items:center; gap:8px; }
+    .ctrl-lbl { font-size:0.69rem; color:var(--sub); flex-shrink:0; width:68px; }
+    .ctrl-val { font-size:0.68rem; font-weight:600; color:var(--text);
+                min-width:30px; text-align:right; flex-shrink:0; }
+    input[type=range] { flex:1; accent-color:var(--primary); cursor:pointer; height:4px; }
+    .num-input { width:44px; border:1.5px solid var(--border); border-radius:6px;
+                 padding:3px 6px; font:inherit; font-size:0.72rem; color:var(--text);
+                 background:var(--ghost); text-align:center; }
+    .num-input:focus { outline:none; border-color:var(--primary); }
+
+    /* ── Panel status indicator ────────────────────────────────── */
+    .pstat      { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
+    .pstat-dot  { width:7px; height:7px; border-radius:50%; background:var(--muted);
+                  flex-shrink:0; transition:background .3s; }
+    .pstat-text { font-size:0.72rem; font-weight:600; color:var(--muted); transition:color .3s; }
+    .pstat.ok   .pstat-dot  { background:var(--green); }
+    .pstat.ok   .pstat-text { color:var(--green); }
+    .pstat.warn .pstat-dot  { background:var(--amber); }
+    .pstat.warn .pstat-text { color:var(--amber); }
+    .pstat.err  .pstat-dot  { background:var(--red); }
+    .pstat.err  .pstat-text { color:var(--red); }
+    .pstat-detail { font-size:0.68rem; color:var(--sub); margin-top:-4px; margin-bottom:8px; }
+
+    /* ── Camera preview ─────────────────────────────────────────── */
+    #cam-preview {
+      display: block; width: 100%; aspect-ratio: 4/3;
+      border-radius: 6px; background: var(--ghost);
+    }
   </style>
 </head>
 <body>
 
   <!-- Full-width header -->
   <header class="header">
-    <span class="header-status placeholder">● Checking…</span>
     <span class="header-title">🎂 Cake A Wish 🖨️</span>
   </header>
 
   <div class="body-row">
 
-    <!-- Left — Printer + Blow to Print -->
+    <!-- Left — Printer · Camera · Arduino · Blow to Print -->
     <div class="left-col">
 
+      <!-- Printer -->
       <div class="card">
         <div class="card-label">Printer</div>
-        <div class="placeholder">[ Connected · 62red · 696×1044 ]</div>
+        <div class="pstat warn" id="printer-pstat">
+          <span class="pstat-dot"></span>
+          <span class="pstat-text" id="printer-status-text">checking…</span>
+        </div>
+        <div class="pstat-detail" id="printer-detail">—</div>
       </div>
 
+      <!-- Camera -->
+      <div class="card" id="cam-card">
+        <div class="card-label">Camera</div>
+        <div class="pstat" id="cam-pstat">
+          <span class="pstat-dot"></span>
+          <span class="pstat-text" id="cam-status">initialising…</span>
+        </div>
+        <canvas id="cam-preview"></canvas>
+        <div class="level-track" style="margin-top:8px">
+          <div class="level-fill"   id="cam-nw-fill"   style="background:var(--primary);width:0%"></div>
+          <div class="level-thresh" id="cam-nw-thresh" style="left:62%"></div>
+        </div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="cam-nw-val">—</div>
+        <div class="blow-row" style="margin-top:6px">
+          <span class="blow-lbl" style="color:var(--primary)">Blow</span>
+          <div class="blow-track"><div class="blow-fill" id="cam-blow-bar" style="background:var(--primary)"></div></div>
+          <span class="blow-ct" id="cam-blow-ct">0</span>
+        </div>
+        <div class="ctrl-row" style="margin-top:6px">
+          <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">lip threshold</span>
+          <input type="range" id="adm-sens" min="20" max="80" value="50">
+          <span id="adm-sens-val" style="display:none">0.50</span>
+        </div>
+      </div>
+
+      <!-- Arduino -->
+      <div class="card" id="ard-card">
+        <div class="card-label">Arduino</div>
+        <div class="pstat" id="ard-pstat">
+          <span class="pstat-dot"></span>
+          <span class="pstat-text" id="ard-status-text">disconnected</span>
+        </div>
+        <div class="level-track">
+          <div class="level-fill"   id="btp-level-fill"></div>
+          <div class="level-thresh" id="btp-level-thresh" style="left:80%"></div>
+        </div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="ard-level-val">—</div>
+        <div class="blow-row" style="margin-top:6px">
+          <span class="blow-lbl" style="color:var(--amber)">Blow</span>
+          <div class="blow-track"><div class="blow-fill" id="ard-blow-bar" style="background:var(--amber)"></div></div>
+          <span class="blow-ct" id="ard-blow-ct">0</span>
+        </div>
+        <div class="ctrl-row" style="margin-top:6px">
+          <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">threshold</span>
+          <input type="range" id="adm-ard-thresh" min="1" max="200" value="95">
+          <span id="adm-ard-thresh-val" style="display:none">95</span>
+        </div>
+      </div>
+
+      <!-- Blow to Print -->
       <div class="card grow">
         <div class="card-label">Blow to Print</div>
-        <div class="placeholder">[ Toggle · Arduino · MediaPipe · Sensitivity ]</div>
+        <div class="btp-body">
+
+          <div class="btp-row" style="justify-content:space-between">
+            <span style="font-size:0.72rem;font-weight:600">Quick print on blow</span>
+            <div class="seg">
+              <button class="seg-btn" id="btp-on"  onclick="btpSetEnabled(true)">On</button>
+              <button class="seg-btn active" id="btp-off" onclick="btpSetEnabled(false)">Off</button>
+            </div>
+          </div>
+
+          <hr class="btp-divider">
+
+          <div class="blow-row is-combo">
+            <span class="blow-lbl" style="color:var(--green)">Blow</span>
+            <div class="blow-track">
+              <div class="blow-fill" id="adm-bar-comb" style="background:var(--green)"></div>
+            </div>
+            <span class="blow-ct" id="adm-cnt-comb">0</span>
+          </div>
+
+        </div>
       </div>
 
     </div>
@@ -284,6 +427,256 @@
     </div>
 
   </div>
+
+
+<script>
+// ── Blow to Print ─────────────────────────────────────────────────
+
+const _BLOW_WIN = 2000;
+const _blowAt = { mp: 0, ard: 0, comb: 0 };
+const _blowCt = { mp: 0, ard: 0, comb: 0 };
+
+const _BLOW_BARS = { mp: 'cam-blow-bar', ard: 'ard-blow-bar', comb: 'adm-bar-comb' };
+const _BLOW_CTS  = { mp: 'cam-blow-ct',  ard: 'ard-blow-ct',  comb: 'adm-cnt-comb' };
+
+function btpSetEnabled(on) {
+  fetch('/blow/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: on }),
+  });
+  _btpApplyEnabled(on);
+}
+
+function _btpApplyEnabled(on) {
+  document.getElementById('btp-on').classList.toggle('active', on);
+  document.getElementById('btp-on').classList.toggle('is-on', on);
+  document.getElementById('btp-off').classList.toggle('active', !on);
+}
+
+// Drain all three blow bars via rAF
+(function _drain() {
+  const now = performance.now();
+  for (const key of ['mp', 'ard', 'comb']) {
+    const pct = Math.max(0, 1 - (now - _blowAt[key]) / _BLOW_WIN) * 100;
+    const el = document.getElementById(_BLOW_BARS[key]);
+    if (el) el.style.width = pct + '%';
+  }
+  requestAnimationFrame(_drain);
+})();
+
+// Lip threshold (read by the MediaPipe module)
+window.btpThreshold = 0.50;
+const _sensEl = document.getElementById('adm-sens');
+_sensEl.addEventListener('input', () => {
+  window.btpThreshold = _sensEl.value / 100;
+  document.getElementById('adm-sens-val').textContent = window.btpThreshold.toFixed(2);
+});
+_sensEl.addEventListener('change', () => {
+  fetch('/blow/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sensitivity: _sensEl.value / 100 }),
+  });
+});
+
+// Arduino threshold
+const _ardThreshEl = document.getElementById('adm-ard-thresh');
+_ardThreshEl.addEventListener('change', () => {
+  const val = parseInt(_ardThreshEl.value);
+  document.getElementById('adm-ard-thresh-val').textContent = val;
+  fetch('/blow/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ arduino_threshold: val }),
+  });
+});
+
+// ── SSE ───────────────────────────────────────────────────────────
+const _sse = new EventSource('/blow/stream');
+_sse.onmessage = e => {
+  let d; try { d = JSON.parse(e.data); } catch { return; }
+
+  if (d.arduino_level) {
+    const al = d.arduino_level;
+    const sliderThresh = parseInt(_ardThreshEl.value);
+    const dispThresh = sliderThresh || al.threshold || 95;
+    document.getElementById('btp-level-fill').style.width =
+      Math.min(100, (al.level / dispThresh) * 100) + '%';
+    document.getElementById('btp-level-thresh').style.left =
+      Math.min(96, (dispThresh / 200) * 100) + '%';
+    document.getElementById('ard-level-val').textContent =
+      al.level + ' / ' + dispThresh;
+    return;
+  }
+
+  if (d.event === 'blow') {
+    const key      = d.source === 'mediapipe' ? 'mp' : 'ard';
+    const otherKey = key === 'mp' ? 'ard' : 'mp';
+    const pNow     = performance.now();
+    _blowAt[key]   = pNow;
+    _blowCt[key]++;
+    const ct = document.getElementById(_BLOW_CTS[key]);
+    if (ct) ct.textContent = _blowCt[key];
+    if (pNow - _blowAt[otherKey] < _BLOW_WIN) {
+      _blowAt.comb = pNow;
+      _blowCt.comb++;
+      const combCt = document.getElementById(_BLOW_CTS.comb);
+      if (combCt) combCt.textContent = _blowCt.comb;
+    }
+    return;
+  }
+
+  // 1s status heartbeat
+  if (d.arduino !== undefined) {
+    const ok = d.arduino.connected;
+    document.getElementById('ard-pstat').className   = 'pstat ' + (ok ? 'ok' : '');
+    document.getElementById('ard-status-text').textContent = ok ? 'connected' : 'disconnected';
+  }
+  if (d.enabled     !== undefined) _btpApplyEnabled(d.enabled);
+  if (d.sensitivity !== undefined) {
+    _sensEl.value = Math.round(d.sensitivity * 100);
+    window.btpThreshold = d.sensitivity;
+    document.getElementById('adm-sens-val').textContent = d.sensitivity.toFixed(2);
+  }
+  if (d.arduino_threshold !== undefined && d.arduino_threshold !== null) {
+    _ardThreshEl.value = d.arduino_threshold;
+    document.getElementById('adm-ard-thresh-val').textContent = d.arduino_threshold;
+  }
+};
+</script>
+
+
+<script type="module">
+import { FaceLandmarker, FilesetResolver }
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const MOUTH_L = 61, MOUTH_R = 291, EYE_L = 33, EYE_R = 263;
+const MIN_FRAMES = 3;
+
+const canvas = document.getElementById('cam-preview');
+const ctx    = canvas.getContext('2d');
+
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+function setCamPstat(state, text) {
+  document.getElementById('cam-pstat').className   = 'pstat ' + state;
+  document.getElementById('cam-status').textContent = text;
+}
+
+// Load model
+let landmarker;
+try {
+  const vision = await FilesetResolver.forVisionTasks(
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+  );
+  landmarker = await FaceLandmarker.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: '/blow/face_landmarker.task', delegate: 'GPU' },
+    runningMode: 'VIDEO',
+    numFaces: 1,
+  });
+} catch (err) {
+  setCamPstat('err', 'model failed');
+  throw err;
+}
+
+// Camera
+let vid;
+try {
+  vid = document.createElement('video');
+  vid.autoplay = true; vid.playsInline = true; vid.muted = true;
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  vid.srcObject = stream;
+  await new Promise(res => vid.onloadedmetadata = res);
+  await vid.play();
+} catch (err) {
+  setCamPstat('err', 'camera unavailable');
+  throw err;
+}
+
+setCamPstat('ok', 'ready');
+
+let mpState = 'ready', consec = 0, flashUntil = 0;
+
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (vid.readyState < 2) return;
+
+  const W = vid.videoWidth, H = vid.videoHeight;
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+
+  // Mirrored frame
+  ctx.save();
+  ctx.scale(-1, 1); ctx.translate(-W, 0);
+  ctx.drawImage(vid, 0, 0);
+  ctx.restore();
+
+  const result = landmarker.detectForVideo(vid, now);
+  const lms    = result.faceLandmarks;
+
+  if (lms && lms.length > 0) {
+    const lm  = lms[0];
+    const mw  = dist(lm[MOUTH_L], lm[MOUTH_R]);
+    const fw  = dist(lm[EYE_L],   lm[EYE_R]);
+    const nw  = fw > 0 ? mw / fw : 1.0;
+    const thr = window.btpThreshold ?? 0.50;
+
+    if (mpState === 'ready') {
+      consec = nw <= thr ? consec + 1 : 0;
+      if (consec >= MIN_FRAMES) {
+        mpState = 'blowing'; flashUntil = now + 600; consec = 0;
+        fetch('/blow/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: 'mediapipe', ts: now / 1000 }),
+        });
+      }
+    } else if (nw > thr) {
+      mpState = 'ready'; consec = 0;
+    }
+
+    const col = now < flashUntil ? '#E05F7B' : '#7C6FF7';
+
+    // Live nw bar in Camera panel
+    const nwPct = Math.min(100, (nw / 0.8) * 100);
+    document.getElementById('cam-nw-fill').style.width      = nwPct + '%';
+    document.getElementById('cam-nw-fill').style.background = now < flashUntil ? 'var(--red)' : 'var(--primary)';
+    document.getElementById('cam-nw-thresh').style.left     = Math.min(96, (thr / 0.8) * 100) + '%';
+    document.getElementById('cam-nw-val').textContent       = nw.toFixed(3) + ' / ' + thr.toFixed(2);
+
+    // Mouth corners + eye corners
+    ctx.fillStyle = col;
+    for (const i of [MOUTH_L, MOUTH_R, EYE_L, EYE_R]) {
+      const p = lm[i];
+      ctx.beginPath();
+      ctx.arc((1 - p.x) * W, p.y * H, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Mouth line
+    const ml = lm[MOUTH_L], mr = lm[MOUTH_R];
+    ctx.beginPath();
+    ctx.moveTo((1 - ml.x) * W, ml.y * H);
+    ctx.lineTo((1 - mr.x) * W, mr.y * H);
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  // Blow flash border
+  if (now < flashUntil) {
+    ctx.strokeStyle = '#E05F7B'; ctx.lineWidth = 5;
+    ctx.strokeRect(2, 2, W - 4, H - 4);
+  }
+
+  if (lms && lms.length > 0) {
+    setCamPstat(mpState === 'blowing' ? 'warn' : 'ok', mpState === 'blowing' ? 'blow!' : 'face detected');
+  } else {
+    setCamPstat('', 'no face');
+    document.getElementById('cam-nw-fill').style.width = '0%';
+    document.getElementById('cam-nw-val').textContent  = '—';
+  }
+}
+
+requestAnimationFrame(tick);
+</script>
 
 </body>
 </html>

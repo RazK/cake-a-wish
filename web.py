@@ -15,17 +15,21 @@ from pydantic import BaseModel
 import blow_router
 from label_printer.convertor import build_instructions, process_for_preview
 from label_printer.frames import REGISTRY
-from label_printer.printer import BrotherPrinter
+from label_printer.printer import BrotherPrinter, BTBrotherPrinter
 
 # ── State ────────────────────────────────────────────────────────────────────
 
 _FALLBACK_LABEL = "62red"
 _FALLBACK_W, _FALLBACK_H = 696, 1044
-_DEFAULT_IP = os.getenv("PRINTER_IP", "192.168.1.139")
+_DEFAULT_IP = os.getenv("PRINTER_IP", "10.140.224.9")
+_DEFAULT_BT = os.getenv("PRINTER_BT_DEV", "")  # e.g. /dev/cu.QL-820NWB5742
 
 _printer_ip: str = _DEFAULT_IP
+_printer_bt: str = _DEFAULT_BT  # non-empty → BT mode
 _printer_state: dict = {
     "ip": _DEFAULT_IP,
+    "bt_device": _DEFAULT_BT,
+    "connection_type": "bt" if _DEFAULT_BT else "wifi",
     "connected": False,
     "label_id": _FALLBACK_LABEL,
     "label_w": _FALLBACK_W,
@@ -34,6 +38,13 @@ _printer_state: dict = {
     "phase": None,
     "errors": [],
 }
+
+
+def _make_printer():
+    """Return the active printer instance based on current connection mode."""
+    if _printer_bt:
+        return BTBrotherPrinter(_printer_bt)
+    return BrotherPrinter(_printer_ip)
 _history: list[dict] = []
 
 # ── Label helpers ─────────────────────────────────────────────────────────────
@@ -105,36 +116,48 @@ def _apply_frame(img: Image.Image, template_id: Optional[str]) -> Image.Image:
 async def _monitor_loop():
     global _printer_state
     while True:
+        bt = _printer_bt
         ip = _printer_ip
         delay = 1.0
         try:
-            printer = BrotherPrinter(ip)
+            printer = _make_printer()
             result = await asyncio.to_thread(printer.query_status)
             connected = result["connected"]
-            st = result.get("status") or {}
 
-            label_id = _detect_label(st, printer.model)
-            w, h = _label_dims(label_id)
-            errors = st.get("errors", [])
-            phase = st.get("phase_type")
-
-            if not connected:
-                pill, delay = "offline", 0.3
-            elif errors:
-                pill = "error"
-            elif phase and "print" in phase.lower():
-                pill = "printing"
+            if bt:
+                # BT: no status info available — use fallback label
+                label_id, w, h = _FALLBACK_LABEL, _FALLBACK_W, _FALLBACK_H
+                errors, phase = [], None
+                pill = "online" if connected else "offline"
+                if not connected:
+                    delay = 2.0
             else:
-                pill = "online"
+                st = result.get("status") or {}
+                label_id = _detect_label(st, printer.model)
+                w, h = _label_dims(label_id)
+                errors = st.get("errors", [])
+                phase = st.get("phase_type")
+                if not connected:
+                    pill, delay = "offline", 0.3
+                elif errors:
+                    pill = "error"
+                elif phase and "print" in phase.lower():
+                    pill = "printing"
+                else:
+                    pill = "online"
 
             _printer_state = {
-                "ip": ip, "connected": connected,
+                "ip": ip, "bt_device": bt,
+                "connection_type": "bt" if bt else "wifi",
+                "connected": connected,
                 "label_id": label_id, "label_w": w, "label_h": h,
                 "status": pill, "phase": phase, "errors": errors,
             }
         except Exception as exc:
             _printer_state = {
-                "ip": ip, "connected": False,
+                "ip": ip, "bt_device": bt,
+                "connection_type": "bt" if bt else "wifi",
+                "connected": False,
                 "label_id": _FALLBACK_LABEL, "label_w": _FALLBACK_W, "label_h": _FALLBACK_H,
                 "status": "offline", "phase": None, "errors": [str(exc)],
             }
@@ -172,14 +195,24 @@ async def get_printer():
 
 
 class PrinterUpdate(BaseModel):
-    ip: str
+    ip: Optional[str] = None
+    bt_device: Optional[str] = None
 
 @app.put("/printer")
 async def put_printer(req: PrinterUpdate):
-    global _printer_ip, _printer_state
-    _printer_ip = req.ip
-    _printer_state = {**_printer_state, "ip": req.ip, "connected": False, "status": "checking"}
-    return {"ip": req.ip}
+    global _printer_ip, _printer_bt, _printer_state
+    if req.bt_device is not None:
+        _printer_bt = req.bt_device
+    if req.ip is not None:
+        _printer_ip = req.ip
+    conn = "bt" if _printer_bt else "wifi"
+    _printer_state = {
+        **_printer_state,
+        "ip": _printer_ip, "bt_device": _printer_bt,
+        "connection_type": conn,
+        "connected": False, "status": "checking",
+    }
+    return {"ip": _printer_ip, "bt_device": _printer_bt, "connection_type": conn}
 
 # ── Templates ─────────────────────────────────────────────────────────────────
 
@@ -225,7 +258,7 @@ async def print_label(req: ImageRequest):
     label_id = _printer_state["label_id"]
     try:
         instructions = await asyncio.to_thread(build_instructions, framed, label_id)
-        printer = BrotherPrinter(_printer_ip)
+        printer = _make_printer()
         await asyncio.to_thread(printer.send_instructions, instructions)
     except Exception as exc:
         raise HTTPException(500, str(exc))

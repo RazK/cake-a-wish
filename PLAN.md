@@ -11,59 +11,73 @@ Two Claudes are working in parallel. This section defines the split, the
 architecture decision, and the exact integration contract so neither blocks
 the other.
 
-### Architecture decision — camera ownership
+### Architecture decision — MediaPipe moves to browser, Arduino stays server-side
 
-**The problem:** A webcam can only be opened by one process at a time.
-Server-side Python MediaPipe + browser `getUserMedia` for live preview would
-conflict — one would fail.
+**Camera conflict:** Python OpenCV + browser `getUserMedia` both need the webcam
+and will fight. Solution: MediaPipe detection moves to the browser.
 
-**Decision:** Browser owns the camera exclusively.
-- MediaPipe runs in the **browser** (`@mediapipe/tasks-vision` JS/WASM)
-- Face blend shapes (`cheekPuff`, `mouthPucker`) detect blowing at 30fps in-browser
-- Arduino serial stays **server-side** (can't access serial from browser)
-- No video frames streamed over WebSocket — only the final blow event crosses the wire
+**Blow event flow:**
+```
+Browser MediaPipe JS  →  POST /blow/event  →  ╮
+                                               server fuses → SSE broadcast → all clients
+Arduino serial        →  blow_detection/   →  ╯
+```
+
+- Browser runs `@mediapipe/tasks-vision` (same model file, same landmark logic as Python)
+- On detected blow → `POST /blow/event {source: "mediapipe"}` — tiny, once per blow
+- Server receives it, fuses with Arduino events via `BlowEngine`, broadcasts via SSE
+- All clients (admin, kiosk) subscribe to SSE → start countdown → call `POST /print`
+- `enabled` toggle enforced server-side — server simply doesn't forward if disabled
+- Single fusion point means kiosk page gets blow events for free, no logic duplication
+
+**`blow_detection/mediapipe_blow.py` is retired** — replaced by ~30 lines of JS.
+`BlowEngine`, Arduino serial reader, `face_landmarker.task` model all stay.
 
 ### Ownership split
 
 | Area | Owner |
 |------|-------|
-| `web.py` — printer API, preview, print, gallery, SSE endpoint | **Web Claude (this file)** |
-| `templates/admin.html` — all frontend JS including MediaPipe JS | **Web Claude (this file)** |
-| Arduino serial reader (`blow_detector.py` or equivalent) | **Other Claude** |
-| `GET /blow/status` + SSE push when Arduino fires `BLOW` | **Other Claude** exposes; Web Claude consumes |
+| `web.py` — printer API, preview, print, gallery | **Web Claude** |
+| `templates/admin.html` — all frontend JS incl. MediaPipe JS | **Web Claude** |
+| `blow_detection/engine.py` — BlowEngine fusion | **Other Claude** ✅ done |
+| `arduino/` — serial reader + BlowDetector sketch | **Other Claude** ✅ done |
+| `POST /blow/event` + `GET /blow/stream` + `POST /blow/settings` | **Other Claude** exposes; Web Claude consumes |
 
-### Integration contract (the only thing that must be agreed)
+### Integration contract
 
-**Other Claude delivers one SSE endpoint:**
+**Other Claude delivers:**
+
 ```
+POST /blow/event   { source: "mediapipe", ts: float }
+→ { ok: true }
+Feeds the browser's MediaPipe detection into BlowEngine.
+
 GET /blow/stream
 ```
-Streams Server-Sent Events. Each Arduino blow fires:
+SSE stream. Periodic status (every 1s):
+```json
+{"arduino": {"connected": true, "level": 38, "threshold": 95},
+ "mediapipe": {"active": true},
+ "enabled": true, "countdown_s": 3}
 ```
-data: {"source": "arduino", "level": 142, "threshold": 95}
+On blow (from either source):
+```json
+{"event": "blow", "source": "arduino"|"mediapipe", "ts": 1234567890.0}
 ```
-Also streams periodic status (every 1s):
-```
-data: {"arduino": {"connected": true, "level": 38, "threshold": 95}, "enabled": true, "countdown_s": 3}
-```
-
-**Web Claude consumes it:**
-- Browser `EventSource('/blow/stream')` — no polling needed
-- MediaPipe JS runs independently in browser on the camera stream
-- Blow fires when **either** Arduino SSE event arrives **or** MediaPipe detects blow
-- Both update the same Blow to Print UI state
-
-**Settings written by Web Claude:**
 ```
 POST /blow/settings   { enabled?, sensitivity?, countdown_s? }
+→ { ok: true }
 ```
-Other Claude implements this endpoint; Web Claude calls it.
 
-### What can run fully in parallel (no dependency)
+**Web Claude delivers:**
+- MediaPipe JS running in browser on the existing camera stream
+- `POST /blow/event` when MediaPipe detects a blow
+- `EventSource('/blow/stream')` → countdown animation → `POST /print`
 
-Web Claude can complete Phases 2–5 without waiting for anything from Other Claude.
-Phase 6 (blow integration) is the merge point — needs the SSE endpoint contract
-above to be live before wiring up the frontend.
+### What can run fully in parallel
+
+Web Claude completes Phases 2–5 with zero dependency on Other Claude.
+Phase 6 is the merge point — needs the three blow endpoints live.
 
 ---
 
@@ -100,6 +114,38 @@ above to be live before wiring up the frontend.
 > 3. `GET /templates/clean/overlay.png?w=696&h=1044` returns a PNG
 > 4. `POST /preview` with a test image returns a dithered PNG data URL
 > 5. `GET /history` returns `[]`
+
+---
+
+## Phase 2.5 — Bluetooth Printer Support ⚠️ Blocked
+
+**What was built:**
+- `BTBrotherPrinter` class in `label_printer/printer.py`
+  - `query_status()`: opens serial port to confirm BT is live; returns `connected: True/False`
+  - `send_instructions()`: prepends `INVALIDATE + INITIALIZE`, writes raster bytes over serial
+  - No status/label-detect over BT — uses fallback label (`62red`, 696×1044)
+- `web.py` changes:
+  - `_printer_bt` state variable; `_make_printer()` selects WiFi vs BT automatically
+  - Monitor loop updated: BT mode polls every 2s, skips label detection
+  - `GET /printer` now includes `bt_device`, `connection_type: "wifi"|"bt"` fields
+  - `PUT /printer {ip?, bt_device?}` — set either or both; bt_device non-empty → BT mode
+  - `POST /print` uses `_make_printer()` so it works with both modes
+- BT device auto-discovered on macOS at `/dev/cu.QL-820NWB5742`
+
+**To activate BT mode:**
+```bash
+PRINTER_BT_DEV=/dev/cu.QL-820NWB5742 uvicorn web:app ...
+# or at runtime:
+curl -X PUT http://localhost:8000/printer -H 'Content-Type: application/json' \
+  -d '{"bt_device": "/dev/cu.QL-820NWB5742"}'
+```
+
+**Status: blocked on macOS.** CUPS BT backend connects briefly then drops ("Connection Failed"). Raw serial via `/dev/cu.*` opens without error but data never reaches the printer (RFCOMM link doesn't actually establish despite BT showing Connected). Root cause: macOS CUPS BT backend + Brother vendor-specific service `0x902000` don't play well together. **Use WiFi for now.**
+
+**Phase 2.5 UI (deferred to Phase 7 polish):**
+- BT/WiFi toggle in Printer settings card
+- BT device picker (auto-populated with paired `cu.QL-*` devices from `/dev/`)
+- Show `connection_type` badge in status pill
 
 ---
 
@@ -176,36 +222,30 @@ above to be live before wiring up the frontend.
 
 ## Phase 6 — Blow Detection Integration
 
-**Depends on:** Other Claude's `GET /blow/stream` SSE endpoint being live (see contract above).
+**Depends on:** Other Claude's `POST /blow/event`, `GET /blow/stream`, `POST /blow/settings` being live.
 
 **What gets built:**
 
-Backend (`web.py`):
-- Consumes Other Claude's blow module — imports and wires Arduino serial reader into startup
-- Adds `GET /blow/stream` SSE route (or defers to Other Claude's implementation)
-- Adds `POST /blow/settings` `{enabled?, sensitivity?, countdown_s?}` → `{ok}`
-- Persists settings to JSON file
-
 Frontend (`admin.html` JS):
-- Load `@mediapipe/tasks-vision` — initialize FaceLandmarker on the live camera stream
-- Detect blow from blend shapes: `cheekPuff > 0.6` AND `mouthPucker > 0.4` for N consecutive frames
-- `EventSource('/blow/stream')` — listen for Arduino blow events
-- Fuse both signals: either source triggers countdown
+- Load `@mediapipe/tasks-vision`, serve `face_landmarker.task` as static file
+- Run FaceLandmarker in the existing `requestAnimationFrame` loop (same stream as canvas)
+- Compute `nw = mouth_w / face_w` (landmarks 61, 291, 33, 263) — same logic as Python
+- On blow detected (nw ≤ threshold for N frames, 4s cooldown) → `POST /blow/event {source: "mediapipe"}`
+- `EventSource('/blow/stream')` — on `event: blow` → animate countdown overlay → fire ⚡ Quick Print at zero
 - Blow to Print toggle → `POST /blow/settings {enabled}`
-- Sensitivity slider → maps to blend shape threshold + `POST /blow/settings {sensitivity}`
-- Countdown input → `POST /blow/settings {countdown_s}`
-- On blow (when enabled): animate countdown overlay → fire ⚡ Quick Print at zero
-- Update Arduino pill + MediaPipe pill from SSE status messages
+- Sensitivity slider → `POST /blow/settings {sensitivity}` on change
+- Countdown input → `POST /blow/settings {countdown_s}` on change
+- SSE status messages → update Arduino pill (connected/level) + MediaPipe pill (active/ratio)
 
-**Goal:** Blow into mic or toward camera → countdown → auto print.
+**Goal:** Purse lips toward camera OR blow into Arduino mic → countdown → auto print.
 
 ### ✋ Approval gate
-> 1. `GET /blow/stream` delivers SSE events
-> 2. Toggle on → blow toward camera → MediaPipe detects → countdown appears
-> 3. Toggle on → blow into Arduino mic → Arduino event → countdown appears
-> 4. Countdown reaches zero → Quick Print fires
-> 5. Toggle off → blowing does nothing
-> 6. Arduino pill + MediaPipe pill reflect live state
+> 1. MediaPipe JS running — MediaPipe pill shows "active" in Blow to Print card
+> 2. Toggle on → purse lips → browser detects → POST /blow/event → SSE fires → countdown → print
+> 3. Toggle on → blow into Arduino mic → SSE fires → same countdown flow
+> 4. Toggle off → blowing does nothing
+> 5. Arduino pill shows connected/level live from SSE
+> 6. Sensitivity slider visibly changes detection threshold in real time
 
 ---
 

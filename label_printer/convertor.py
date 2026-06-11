@@ -1,3 +1,6 @@
+import logging
+logging.getLogger("brother_ql").setLevel(logging.ERROR)
+
 from PIL import Image
 import PIL.ImageOps
 import PIL.ImageChops
@@ -48,14 +51,13 @@ def process_for_preview(image: Image.Image, label_id: str = '') -> Image.Image:
         return image.convert("L").convert("1").convert("L")
 
 
-def build_instructions(image: Image.Image, label_id: str, model: str = "QL-820NWB") -> bytes:
+def build_instructions(image: Image.Image, label_id: str, model: str = "QL-820NWB", rotate: int = 0) -> bytes:
     from brother_ql.labels import LabelsManager, Color
     lm   = LabelsManager()
     lbl  = next((el for el in lm.iter_elements() if el.identifier == label_id), None)
     is_red = lbl is not None and lbl.color == Color.BLACK_RED_WHITE
     qlr  = BrotherQLRaster(model)
     qlr.exception_on_warning = True
-    # Pass the original image; brother_ql handles HSV separation (red) or dithering (black-only)
-    convert(qlr, [image], label_id, rotate=0, threshold=70.0, dither=not is_red,
+    convert(qlr, [image], label_id, rotate=rotate if rotate else "auto", threshold=70.0, dither=not is_red,
             compress=False, red=is_red, dpi_600=False, hq=True, cut=True)
     return qlr.data

@@ -3,6 +3,7 @@ import socket
 import urllib.request
 from typing import Optional
 
+import serial
 from brother_ql.backends.helpers import send
 from brother_ql.reader import interpret_response
 
@@ -121,3 +122,37 @@ class BrotherPrinter:
             backend_identifier="network",
             blocking=True,
         )
+
+
+class BTBrotherPrinter:
+    """Brother QL over Bluetooth serial (e.g. /dev/cu.QL-820NWB5742).
+
+    Status queries are not supported over BT — connected means the device file
+    can be opened. Label detection is unavailable; caller should use the fallback.
+    """
+
+    def __init__(self, device: str):
+        self.device = device
+        self.model  = "QL-820NWB"
+
+    def query_status(self) -> dict:
+        try:
+            s = serial.Serial(self.device, baudrate=9600, timeout=0.5,
+                              rtscts=False, dsrdtr=False)
+            s.close()
+            return {"connected": True, "status": None}
+        except Exception:
+            return {"connected": False, "status": None}
+
+    def send_instructions(self, instructions: bytes) -> dict:
+        # Prepend explicit invalidation + init: BT serial doesn't get a fresh
+        # TCP connection per job, so the printer may carry state.
+        payload = _INVALIDATE + _INITIALIZE + instructions
+        s = serial.Serial(self.device, baudrate=115200, timeout=30,
+                          rtscts=False, dsrdtr=False)
+        try:
+            s.write(payload)
+            s.flush()
+        finally:
+            s.close()
+        return {"did_print": True}

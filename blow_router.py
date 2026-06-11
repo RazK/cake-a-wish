@@ -3,7 +3,7 @@
 Endpoints:
   POST /blow/event    — browser MediaPipe feeds a detected blow into BlowEngine
   GET  /blow/stream   — SSE: status every 1s + {event:"blow"} on detection
-  POST /blow/settings — update enabled/sensitivity/countdown_s, persists to JSON
+  POST /blow/settings — update enabled/sensitivity/arduino_threshold, persists to JSON
 """
 
 import asyncio
@@ -33,12 +33,13 @@ _settings_lock = threading.Lock()
 
 
 def _load_settings() -> dict:
+    defaults = {"enabled": False, "sensitivity": 0.5, "arduino_threshold": None}
     if SETTINGS_PATH.exists():
         try:
-            return json.loads(SETTINGS_PATH.read_text())
+            return {**defaults, **json.loads(SETTINGS_PATH.read_text())}
         except Exception:
             pass
-    return {"enabled": False, "sensitivity": 0.5, "countdown_s": 3}
+    return defaults
 
 
 def _save_settings(s: dict):
@@ -97,19 +98,25 @@ class ArduinoReader:
             try:
                 ser = serial.Serial(port, 115200, timeout=1)
                 self._set(connected=True)
-                last_blow = 0.0
+                ard_state = "ready"   # "ready" | "blowing"
                 while self._running:
                     raw = ser.readline().decode("utf-8", errors="replace").strip()
                     if not raw:
                         continue
                     if raw.startswith("LEVEL,"):
                         parts = raw.split(",")
-                        self._set(level=int(parts[1]), threshold=int(parts[2]))
-                    elif raw == "BLOW":
-                        now = time.time()
-                        if now - last_blow >= _BLOW_COOLDOWN:
-                            last_blow = now
-                            self._queue.put(now)
+                        level, ard_thresh = int(parts[1]), int(parts[2])
+                        self._set(level=level, threshold=ard_thresh)
+                        _broadcast({"arduino_level": {"level": level, "threshold": ard_thresh}})
+                        with _settings_lock:
+                            srv_thresh = _settings.get("arduino_threshold") or ard_thresh
+                        above = level >= srv_thresh
+                        if ard_state == "ready" and above:
+                            ard_state = "blowing"
+                            self._queue.put(time.time())
+                        elif ard_state == "blowing" and not above:
+                            ard_state = "ready"
+                    # Arduino's own BLOW signal ignored — server does its own detection
                 ser.close()
             except Exception as e:
                 logger.warning(f"Serial error: {e}")
@@ -151,13 +158,15 @@ async def _status_loop():
         await asyncio.sleep(1)
         active = (time.time() - _mediapipe_last_seen) < 30
         with _settings_lock:
-            enabled = _settings["enabled"]
-            countdown_s = _settings["countdown_s"]
+            enabled           = _settings["enabled"]
+            sensitivity       = _settings["sensitivity"]
+            arduino_threshold = _settings["arduino_threshold"]
         _broadcast({
-            "arduino": _arduino.get_status(),
-            "mediapipe": {"active": active},
-            "enabled": enabled,
-            "countdown_s": countdown_s,
+            "arduino":           {"connected": _arduino.get_status()["connected"]},
+            "mediapipe":         {"active": active},
+            "enabled":           enabled,
+            "sensitivity":       sensitivity,
+            "arduino_threshold": arduino_threshold,
         })
 
 
@@ -230,6 +239,15 @@ _DEBUG_HTML = """<!DOCTYPE html>
            text-overflow: ellipsis; }
   .entry.blow { color: #E05F7B; font-weight: 700; }
   .entry.info { color: #7C6FF7; }
+
+  /* ── Blow indicators ─────────────────────────────────────────── */
+  .ind-row { display:flex; align-items:center; gap:9px; padding:6px 0; }
+  .ind-row:not(:last-child) { border-bottom:1px solid #1a1a1a; }
+  .ind-label { font-size:.72rem; flex-shrink:0; width:68px; }
+  .ind-count { font-size:.62rem; color:#444; min-width:20px; text-align:right; flex-shrink:0; }
+  .ind-bar-wrap { flex:1; height:7px; background:#1c1c1c; border-radius:3px; overflow:hidden; }
+  .ind-row.combo .ind-bar-wrap { height:11px; }
+  .ind-row.combo .ind-label { font-weight:700; font-size:.76rem; }
 </style>
 </head>
 <body>
@@ -275,12 +293,42 @@ _DEBUG_HTML = """<!DOCTYPE html>
     </div>
     <div class="row" style="margin-top:4px">
       <span id="en-pill" class="pill m">enabled: —</span>
-      <span id="cd-val" class="val"></span>
     </div>
   </div>
 
   <div class="pane">
-    <h3>Controls</h3>
+    <h3>Blow Indicators</h3>
+    <div class="ind-row">
+      <span class="ind-label" style="color:#7C6FF7">MediaPipe</span>
+      <div class="ind-bar-wrap">
+        <div id="bar-mp" style="height:100%;width:0%;border-radius:3px;background:#7C6FF7"></div>
+      </div>
+      <span class="ind-count" id="cnt-mp">0</span>
+    </div>
+    <div class="ind-row">
+      <span class="ind-label" style="color:#F59E0B">Arduino</span>
+      <div class="ind-bar-wrap">
+        <div id="bar-ard" style="height:100%;width:0%;border-radius:3px;background:#F59E0B"></div>
+      </div>
+      <span class="ind-count" id="cnt-ard">0</span>
+    </div>
+    <div class="ind-row combo">
+      <span class="ind-label" style="color:#3EBD87">Combined</span>
+      <div class="ind-bar-wrap">
+        <div id="bar-comb" style="height:100%;width:0%;border-radius:3px;background:#3EBD87"></div>
+      </div>
+      <span class="ind-count" id="cnt-comb">0</span>
+    </div>
+    <div class="row" style="margin-top:6px;gap:4px">
+      <span style="font-size:.65rem;color:#444">window</span>
+      <input id="combo-slider" type="range" min="500" max="5000" step="100" value="2000"
+             style="flex:1;accent-color:#3EBD87">
+      <span id="combo-num" class="val">2.0s</span>
+    </div>
+  </div>
+
+  <div class="pane">
+    <h3>Blow-to-print  <span style="color:#555;font-size:.6rem;text-transform:none;letter-spacing:0">(auto-print on blow)</span></h3>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button onclick="setSetting({enabled:true})">Enable</button>
       <button onclick="setSetting({enabled:false})">Disable</button>
@@ -300,10 +348,31 @@ import { FaceLandmarker, FilesetResolver }
 
 // ── landmarks ────────────────────────────────────────────────────
 const MOUTH_L = 61, MOUTH_R = 291, EYE_L = 33, EYE_R = 263;
-const MIN_FRAMES = 3, COOLDOWN_MS = 4000;
+const MIN_FRAMES = 3;
 
 let threshold = 0.50;
-let state = 'ready', consec = 0, lastBlow = 0, flashUntil = 0;
+let state = 'ready', consec = 0, flashUntil = 0;
+
+const _indCounts = { mp: 0, ard: 0, comb: 0 };
+const _blowTime  = { mp: 0, ard: 0, comb: 0 };
+let _COMBO_WIN = 2000;
+
+function triggerInd(id) {
+  _blowTime[id] = performance.now();
+  _indCounts[id]++;
+  document.getElementById('cnt-' + id).textContent = _indCounts[id];
+}
+
+(function animateBars() {
+  const now = performance.now();
+  for (const [id, color] of [['mp','#7C6FF7'],['ard','#F59E0B'],['comb','#3EBD87']]) {
+    const pct = Math.max(0, 1 - (now - _blowTime[id]) / _COMBO_WIN) * 100;
+    const bar = document.getElementById('bar-' + id);
+    bar.style.width = pct + '%';
+    bar.style.boxShadow = pct > 0 ? `0 0 8px 3px ${color}90` : 'none';
+  }
+  requestAnimationFrame(animateBars);
+})();
 
 const cam = document.getElementById('cam');
 const ctx = cam.getContext('2d');
@@ -345,6 +414,12 @@ slider.addEventListener('input', () => {
   document.getElementById('thresh-num').textContent = threshold.toFixed(2);
   updateThreshLine();
 });
+const comboSlider = document.getElementById('combo-slider');
+comboSlider.addEventListener('input', () => {
+  _COMBO_WIN = parseInt(comboSlider.value);
+  document.getElementById('combo-num').textContent = (_COMBO_WIN / 1000).toFixed(1) + 's';
+});
+
 function updateThreshLine() {
   document.getElementById('mp-thresh').style.left =
     Math.min(100, (threshold / 0.8) * 100) + '%';
@@ -358,7 +433,25 @@ es.onopen  = () => { sseDot.style.color = '#3EBD87'; sseDot.textContent = '● s
 es.onerror = () => { sseDot.style.color = '#E05F7B'; sseDot.textContent = '● sse err'; };
 es.onmessage = e => {
   let d; try { d = JSON.parse(e.data); } catch { return; }
-  if (d.event === 'blow') { addLog('BLOW ← server (' + d.source + ')', 'blow'); return; }
+  if (d.arduino_level) {
+    const al = d.arduino_level;
+    const pct = Math.min(100, (al.level / al.threshold) * 80);
+    document.getElementById('ard-bar').style.width = pct + '%';
+    document.getElementById('ard-thresh-line').style.left =
+      Math.min(100, (al.threshold / 200) * 100) + '%';
+    document.getElementById('ard-val').textContent = 'lvl=' + al.level + ' thr=' + al.threshold;
+    return;
+  }
+  if (d.event === 'blow') {
+    addLog('BLOW ← server (' + d.source + ')', 'blow');
+    const src = d.source;
+    const key = src === 'mediapipe' ? 'mp' : 'ard';
+    const otherKey = src === 'mediapipe' ? 'ard' : 'mp';
+    const pNow = performance.now();
+    triggerInd(key);
+    if (pNow - _blowTime[otherKey] < _COMBO_WIN) triggerInd('comb');
+    return;
+  }
 
   const ard = d.arduino || {};
   const ap = document.getElementById('ard-pill');
@@ -375,7 +468,7 @@ es.onmessage = e => {
   const ep = document.getElementById('en-pill');
   ep.className = 'pill ' + (d.enabled ? 'g' : 'm');
   ep.textContent = 'enabled: ' + (d.enabled ? 'yes' : 'no');
-  document.getElementById('cd-val').textContent = 'cd=' + d.countdown_s + 's';
+
 };
 
 // ── MediaPipe init ────────────────────────────────────────────────
@@ -429,8 +522,8 @@ function tick(now) {
     const pursed = nw <= threshold;
     if (state === 'ready') {
       consec = pursed ? consec + 1 : 0;
-      if (consec >= MIN_FRAMES && (now - lastBlow) >= COOLDOWN_MS) {
-        state = 'blowing'; lastBlow = now; flashUntil = now + 600; consec = 0;
+      if (consec >= MIN_FRAMES) {
+        state = 'blowing'; flashUntil = now + 600; consec = 0;
         addLog('BLOW nw=' + nw.toFixed(3), 'blow');
         fetch('/blow/event', {method:'POST',
           headers:{'Content-Type':'application/json'},
@@ -550,7 +643,7 @@ async def blow_stream(request: Request):
 class _BlowSettings(BaseModel):
     enabled: Optional[bool] = None
     sensitivity: Optional[float] = None
-    countdown_s: Optional[int] = None
+    arduino_threshold: Optional[int] = None
 
 
 @router.post("/blow/settings")
@@ -561,7 +654,7 @@ async def blow_settings(body: _BlowSettings):
             _engine.blow_to_print = body.enabled
         if body.sensitivity is not None:
             _settings["sensitivity"] = body.sensitivity
-        if body.countdown_s is not None:
-            _settings["countdown_s"] = body.countdown_s
+        if body.arduino_threshold is not None:
+            _settings["arduino_threshold"] = body.arduino_threshold
         _save_settings(_settings)
     return {"ok": True}
