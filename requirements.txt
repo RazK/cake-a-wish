@@ -4,3 +4,5 @@ Pillow
 fastapi
 jinja2
 uvicorn[standard]
+pyserial
+python-multipart
