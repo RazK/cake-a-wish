@@ -28,7 +28,7 @@ router = APIRouter()
 
 # ── Settings ──────────────────────────────────────────────────────
 
-SETTINGS_PATH = Path("blow_settings.json")
+SETTINGS_PATH = Path("data") / "blow_settings.json"
 _settings_lock = threading.Lock()
 
 

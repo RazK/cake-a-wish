@@ -21,10 +21,12 @@ from label_printer.printer import BrotherPrinter, BTBrotherPrinter
 
 # ── State ────────────────────────────────────────────────────────────────────
 
+_OVERLAY_DIR = Path("data") / "overlays"
+_OVERLAY_DIR.mkdir(parents=True, exist_ok=True)
 _OVERLAY_PATHS = {
-    "header": Path("overlay_header.png"),
-    "footer": Path("overlay_footer.png"),
-    "full":   Path("overlay_full.png"),
+    "header": _OVERLAY_DIR / "header.png",
+    "footer": _OVERLAY_DIR / "footer.png",
+    "full":   _OVERLAY_DIR / "full.png",
 }
 
 _FALLBACK_LABEL = "62"
