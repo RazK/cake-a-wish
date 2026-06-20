@@ -291,6 +291,10 @@
     .seg-btn.active { background:var(--surface); color:var(--text);
                       box-shadow:0 1px 4px rgba(44,38,64,.12); }
     .seg-btn.active.is-on { color:var(--primary); }
+    .pdot { display:inline-block; width:6px; height:6px; border-radius:50%;
+            background:#ccc; margin-left:5px; vertical-align:middle; transition:background .3s; }
+    .pdot.ok  { background:var(--green); }
+    .pdot.err { background:var(--red); }
 
     /* ── Pill ──────────────────────────────────────────────────── */
     .pill { display:inline-flex; align-items:center; gap:4px; font-size:0.66rem; font-weight:600;
@@ -482,6 +486,10 @@
             <span class="pstat-text" id="printer-status-text">checking…</span>
             <span class="pstat-dot"></span>
           </div>
+        </div>
+        <div class="seg" id="printer-mode-seg" style="display:none;margin-bottom:8px">
+          <button class="seg-btn" id="pmsg-wifi" onclick="_setPrinterMode('wifi')">WiFi<span class="pdot" id="pdot-wifi"></span></button>
+          <button class="seg-btn" id="pmsg-usb"  onclick="_setPrinterMode('usb')">USB<span class="pdot" id="pdot-usb"></span></button>
         </div>
         <div class="pdet" id="printer-detail"></div>
       </div>
@@ -818,22 +826,44 @@ function _updatePrinter(d) {
   const pstat      = document.getElementById('printer-pstat');
   const statusText = document.getElementById('printer-status-text');
 
-  const clsMap = { online: 'ok', printing: 'ok', checking: 'warn', error: 'err', offline: '' };
-  const lblMap = { online: 'online', printing: 'printing…', checking: 'checking…', error: 'error', offline: 'offline' };
+  // Header pill — connection-aware status text
+  const pc      = d.printer_connections || {};
+  const modePfx = d.active_mode === 'usb' ? 'USB' : d.active_mode === 'wifi' ? 'WiFi' : d.active_mode === 'bt' ? 'BT' : '';
+  const clsMap  = { online: 'ok', printing: 'ok', checking: 'warn', error: 'err', offline: '' };
+  const lblMap  = {
+    online:   modePfx ? modePfx + ' ready' : 'Ready',
+    printing: 'Printing…',
+    checking: 'Searching…',
+    error:    modePfx ? modePfx + ' error' : 'Error',
+    offline:  modePfx ? modePfx + ' offline' : 'Offline',
+  };
   const newCls  = 'pstat' + (clsMap[d.status] ? ' ' + clsMap[d.status] : '');
   const newText = lblMap[d.status] ?? d.status;
-
   if (pstat.className        !== newCls)  pstat.className        = newCls;
   if (statusText.textContent !== newText) statusText.textContent = newText;
+
+  // WiFi | USB seg tabs
+  const modeSeg  = document.getElementById('printer-mode-seg');
+  const showSeg  = !!(pc.wifi?.available && d.active_mode !== 'bt');
+  modeSeg.style.display = showSeg ? '' : 'none';
+  if (showSeg) {
+    const dotCls = r => 'pdot' + (r === true ? ' ok' : r === false ? ' err' : '');
+    document.getElementById('pmsg-wifi').className = 'seg-btn' + (d.active_mode === 'wifi' ? ' active' : '');
+    document.getElementById('pmsg-usb').className  = 'seg-btn' + (d.active_mode === 'usb'  ? ' active' : '');
+    document.getElementById('pdot-wifi').className = dotCls(pc.wifi?.reachable);
+    document.getElementById('pdot-usb').className  = dotCls(pc.usb?.reachable);
+  }
 
   // Printer detail grid
   const detail = document.getElementById('printer-detail');
   const rows = [];
-  if (d.connection_type === 'bt') {
+  if (d.active_mode === 'bt') {
     rows.push(['Mode', 'Bluetooth']);
     if (d.bt_device) rows.push(['Dev', d.bt_device]);
+  } else if (d.active_mode === 'usb') {
+    const usbDev = pc.usb?.device;
+    if (usbDev) rows.push(['Dev', usbDev.replace('usb://', '').split('_')[0]]);
   } else {
-    rows.push(['Mode', 'WiFi']);
     if (d.ip) rows.push(['IP', d.ip]);
   }
   if (d.model) rows.push(['Model', d.model]);
@@ -884,13 +914,26 @@ function _updatePrinter(d) {
   }
 }
 
-(async function _pollPrinter() {
+let _pollTimer = null;
+async function _pollPrinter() {
   try {
     const r = await fetch('/printer');
     if (r.ok) _updatePrinter(await r.json());
   } catch {}
-  setTimeout(_pollPrinter, 2000);
-})();
+  _pollTimer = setTimeout(_pollPrinter, 2000);
+}
+
+async function _setPrinterMode(mode) {
+  await fetch('/printer/connect', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({mode}),
+  }).catch(() => {});
+  clearTimeout(_pollTimer);
+  _pollPrinter();
+}
+
+_pollPrinter();
 
 // ── SSE ───────────────────────────────────────────────────────────
 const _sse = new EventSource('/blow/stream');

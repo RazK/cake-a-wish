@@ -3,6 +3,8 @@ import base64
 import io
 import json
 import os
+import socket
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -17,7 +19,7 @@ from pydantic import BaseModel
 from blow_detection.router import router as blow_router, startup as blow_startup, shutdown as blow_shutdown
 from label_printer.convertor import build_instructions, process_for_preview
 from label_printer.frames import REGISTRY
-from label_printer.printer import BrotherPrinter, BTBrotherPrinter
+from label_printer.printer import BrotherPrinter, BTBrotherPrinter, USBBrotherPrinter, find_usb_printer
 
 # ── State ────────────────────────────────────────────────────────────────────
 
@@ -35,11 +37,14 @@ _DEFAULT_IP = os.getenv("PRINTER_IP", "10.140.224.9")
 _DEFAULT_BT = os.getenv("PRINTER_BT_DEV", "")  # e.g. /dev/cu.QL-820NWB5742
 
 _printer_ip: str = _DEFAULT_IP
-_printer_bt: str = _DEFAULT_BT  # non-empty → BT mode
+_printer_bt: str = _DEFAULT_BT  # non-empty → BT mode (legacy)
+_active_mode: str = "wifi"      # "wifi" | "usb" — ignored when _printer_bt is set
+_usb_device_id: Optional[str] = None  # updated each monitor tick
 _printer_state: dict = {
     "ip": _DEFAULT_IP,
     "bt_device": _DEFAULT_BT,
     "connection_type": "bt" if _DEFAULT_BT else "wifi",
+    "active_mode": "bt" if _DEFAULT_BT else "wifi",
     "connected": False,
     "label_id": _FALLBACK_LABEL,
     "label_w": _FALLBACK_W,
@@ -47,6 +52,8 @@ _printer_state: dict = {
     "status": "checking",
     "phase": None,
     "errors": [],
+    "printer_connections": {"wifi": {"available": bool(_DEFAULT_IP), "ip": _DEFAULT_IP},
+                             "usb":  {"available": False, "device": None}},
 }
 
 
@@ -54,6 +61,8 @@ def _make_printer():
     """Return the active printer instance based on current connection mode."""
     if _printer_bt:
         return BTBrotherPrinter(_printer_bt)
+    if _active_mode == "usb" and _usb_device_id:
+        return USBBrotherPrinter(_usb_device_id)
     return BrotherPrinter(_printer_ip)
 _DATA_DIR = Path("data")
 _PHOTOS_FILE = _DATA_DIR / "photos.json"
@@ -141,28 +150,136 @@ def _apply_frame(img: Image.Image, template_id: Optional[str]) -> Image.Image:
         return REGISTRY[template_id].apply(img)
     return img
 
+def _wifi_reachable(ip: str) -> bool:
+    try:
+        s = socket.create_connection((ip, 9100), timeout=0.4)
+        s.close()
+        return True
+    except Exception:
+        return False
+
+
+_last_discovery: float = 0.0
+
+async def _discover_wifi_printer() -> Optional[str]:
+    """Scan all local /24 subnets concurrently for port 9100. Returns first IP found."""
+    import subprocess, re
+
+    async def _probe(host: str) -> Optional[str]:
+        try:
+            _, w = await asyncio.wait_for(asyncio.open_connection(host, 9100), timeout=0.3)
+            w.close()
+            await w.wait_closed()
+            return host
+        except Exception:
+            return None
+
+    try:
+        # Collect all local IPv4 addresses from all interfaces
+        out = subprocess.check_output(["ifconfig"], text=True, stderr=subprocess.DEVNULL)
+        local_ips = [m for m in re.findall(r'inet (\d+\.\d+\.\d+\.\d+)', out)
+                     if not m.startswith("127.")]
+        if not local_ips:  # fallback: gateway-routed interface
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80)); local_ips = [s.getsockname()[0]]; s.close()
+
+        prefixes = list(dict.fromkeys(ip.rsplit(".", 1)[0] for ip in local_ips))
+        hosts = [f"{p}.{i}" for p in prefixes for i in range(1, 255)]
+        results = await asyncio.gather(*[_probe(h) for h in hosts])
+        return next((r for r in results if r), None)
+    except Exception:
+        return None
+
 # ── Printer monitor ───────────────────────────────────────────────────────────
 
 async def _monitor_loop():
-    global _printer_state
+    global _printer_state, _active_mode, _usb_device_id, _printer_ip, _last_discovery
     _last_label              = _FALLBACK_LABEL
     _last_w, _last_h         = _FALLBACK_W, _FALLBACK_H
     _last_media_w_mm         = 0
     _last_media_h_mm         = 0
     _last_model              = "QL-820NWB"
     while True:
-        bt = _printer_bt
-        ip = _printer_ip
+        bt    = _printer_bt
+        ip    = _printer_ip
         delay = 1.0
+
+        # ── Probe both connections in parallel ────────────────────
+        # Probe USB always; probe WiFi separately only when USB is active
+        # (when WiFi is active, query_status() below gives us reachability —
+        # probing twice would double-connect to port 9100 and confuse the printer)
+        async def _usb_probe():
+            return await asyncio.to_thread(find_usb_printer) if not bt else None
+
+        async def _side_wifi_probe():
+            if ip and not bt and _active_mode == "usb":
+                return await asyncio.to_thread(_wifi_reachable, ip)
+            return None  # filled from query_status result below
+
+        usb_id, wifi_ok = await asyncio.gather(_usb_probe(), _side_wifi_probe())
+        if not bt:
+            _usb_device_id = usb_id
+        usb_avail = bool(usb_id)
+
+        printer_connections = {
+            "wifi": {"available": bool(ip), "ip": ip,        "reachable": wifi_ok},
+            "usb":  {"available": usb_avail, "device": usb_id, "reachable": usb_avail},
+        }
+
+        active = "bt" if bt else _active_mode
         try:
-            printer = _make_printer()
-            result  = await asyncio.to_thread(printer.query_status)
+            printer   = _make_printer()
+            result    = await asyncio.to_thread(printer.query_status)
             connected = result["connected"]
             model     = getattr(printer, "model", "QL-820NWB")
 
-            if bt:
-                label_id, w, h = _FALLBACK_LABEL, _FALLBACK_W, _FALLBACK_H
-                media_w_mm, media_h_mm = 0, 0
+            # ── Sync reachable with actual poll result ─────────────
+            if not bt:
+                if _active_mode == "wifi":
+                    # WiFi reachability comes from the poll, not a separate probe
+                    printer_connections["wifi"]["reachable"] = connected
+                elif _active_mode == "usb":
+                    # Catches race: USB present at probe time but gone by query_status
+                    printer_connections["usb"]["reachable"] = connected
+                    if not connected:
+                        printer_connections["usb"]["available"] = False
+
+            # ── Auto-discovery: find WiFi printer IP when offline ──
+            if not bt and _active_mode == "wifi" and not connected:
+                if time.time() - _last_discovery > 30 or _last_discovery == 0.0:
+                    _last_discovery = time.time()
+                    found = await _discover_wifi_printer()
+                    if found and found != _printer_ip:
+                        _printer_ip = found
+                        printer  = _make_printer()
+                        result   = await asyncio.to_thread(printer.query_status)
+                        connected = result["connected"]
+                        printer_connections["wifi"]["ip"]        = found
+                        printer_connections["wifi"]["reachable"] = connected
+
+            # ── Auto-failover (post-poll, uses real connectivity) ──
+            # `connected` may have been updated by discovery above — check it fresh
+            if not bt:
+                if _active_mode == "wifi" and not connected and usb_avail:
+                    _active_mode = "usb"
+                    printer   = _make_printer()
+                    result    = await asyncio.to_thread(printer.query_status)
+                    connected = result["connected"]
+                    printer_connections["usb"]["reachable"] = connected
+                elif _active_mode == "usb" and not usb_avail and wifi_ok:
+                    _active_mode = "wifi"
+                    printer   = _make_printer()
+                    result    = await asyncio.to_thread(printer.query_status)
+                    connected = result["connected"]
+                    printer_connections["wifi"]["reachable"] = connected
+
+            active = "bt" if bt else _active_mode
+
+            if bt or _active_mode == "usb":
+                label_id   = _last_label
+                w, h       = _last_w, _last_h
+                media_w_mm = _last_media_w_mm
+                media_h_mm = _last_media_h_mm
                 errors, phase = [], None
                 pill  = "online" if connected else "offline"
                 if not connected:
@@ -174,16 +291,16 @@ async def _monitor_loop():
                 raw_mw     = st.get("media_width",  0)
                 raw_mh     = st.get("media_length", 0)
                 if raw_mw:
-                    label_id       = _detect_label(st, model)
-                    w, h           = _label_dims(label_id)
-                    _last_label    = label_id
+                    label_id         = _detect_label(st, model)
+                    w, h             = _label_dims(label_id)
+                    _last_label      = label_id
                     _last_w, _last_h = w, h
                     _last_media_w_mm = raw_mw
                     _last_media_h_mm = raw_mh
-                    _last_model    = model
+                    _last_model      = model
                 else:
-                    label_id   = _last_label
-                    w, h       = _last_w, _last_h
+                    label_id = _last_label
+                    w, h     = _last_w, _last_h
                 media_w_mm = _last_media_w_mm
                 media_h_mm = _last_media_h_mm
                 model      = _last_model
@@ -197,23 +314,27 @@ async def _monitor_loop():
                     pill = "online"
 
             _printer_state = {
-                "ip": ip, "bt_device": bt,
-                "connection_type": "bt" if bt else "wifi",
+                "ip": _printer_ip, "bt_device": bt,
+                "connection_type": active,
+                "active_mode": active,
                 "model": model,
                 "connected": connected,
                 "label_id": label_id, "label_w": w, "label_h": h,
                 "media_w_mm": media_w_mm, "media_h_mm": media_h_mm,
                 "status": pill, "phase": phase, "errors": errors,
+                "printer_connections": printer_connections,
             }
         except Exception as exc:
             _printer_state = {
-                "ip": ip, "bt_device": bt,
-                "connection_type": "bt" if bt else "wifi",
+                "ip": _printer_ip, "bt_device": bt,
+                "connection_type": active,
+                "active_mode": active,
                 "model": _last_model,
                 "connected": False,
                 "label_id": _FALLBACK_LABEL, "label_w": _FALLBACK_W, "label_h": _FALLBACK_H,
                 "media_w_mm": 0, "media_h_mm": 0,
                 "status": "offline", "phase": None, "errors": [str(exc)],
+                "printer_connections": printer_connections,
             }
             delay = 0.3
         await asyncio.sleep(delay)
@@ -267,6 +388,28 @@ async def put_printer(req: PrinterUpdate):
         "connected": False, "status": "checking",
     }
     return {"ip": _printer_ip, "bt_device": _printer_bt, "connection_type": conn}
+
+
+class ConnectRequest(BaseModel):
+    mode: str  # "wifi" | "usb"
+
+@app.post("/printer/connect")
+async def connect_printer(req: ConnectRequest):
+    global _active_mode, _printer_state, _last_discovery
+    if req.mode not in ("wifi", "usb"):
+        raise HTTPException(400, "mode must be 'wifi' or 'usb'")
+    _active_mode = req.mode
+    if req.mode == "wifi":
+        _last_discovery = 0.0  # force immediate discovery on next monitor tick
+    # Use already-known reachability for the target mode so the UI doesn't flash "Searching"
+    pc = _printer_state.get("printer_connections", {})
+    already_connected = pc.get(req.mode, {}).get("reachable") is True
+    _printer_state = {**_printer_state,
+                      "active_mode": req.mode, "connection_type": req.mode,
+                      "connected": already_connected,
+                      "status": "online" if already_connected else "checking",
+                      "phase": None, "errors": []}
+    return {"ok": True, "mode": _active_mode}
 
 # ── Templates ─────────────────────────────────────────────────────────────────
 
