@@ -107,6 +107,43 @@ Sketch is at `arduino/BlowDetector/BlowDetector.ino`. Flash it to any Arduino wi
 
 ---
 
+## Running on another machine (no Python required)
+
+A pre-built bundle lets you hand a zip to anyone — no Python install needed.
+
+### Build (run once, on your machine)
+
+```bash
+python build.py          # installs pyinstaller and builds
+python build.py --clean  # full rebuild from scratch
+```
+
+Output lives in `dist/`:
+- **Mac** → `dist/CakeAWish.app`  — double-click to launch
+- **Windows** → `dist/CakeAWish/CakeAWish.exe` — double-click to launch
+
+The app starts a local server and opens `http://localhost:8000` in your default browser automatically.
+
+### Distribute
+
+Zip the output and share it:
+```bash
+# Mac
+zip -r CakeAWish-mac.zip dist/CakeAWish.app
+
+# Windows (run on a Windows machine after building there)
+Compress-Archive dist\CakeAWish CakeAWish-win.zip
+```
+
+### Notes
+
+- **WiFi printing** works out of the box on Mac and Windows.
+- **USB printing on Windows** requires [libusb](https://zadig.akeo.ie/) — run Zadig, select the Brother printer, install the WinUSB driver. USB printing on Mac works without any extras.
+- **Camera permissions** — macOS will prompt for camera access on first launch; grant it.
+- The `data/` folder (photos, settings) is created next to the executable, not inside the bundle.
+
+---
+
 ## Project docs
 
 | Doc | Contents |
