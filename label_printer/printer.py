@@ -156,3 +156,54 @@ class BTBrotherPrinter:
         finally:
             s.close()
         return {"did_print": True}
+
+
+def find_usb_printer() -> Optional[str]:
+    """Return the identifier of the first detected Brother USB printer, or None."""
+    try:
+        from brother_ql.backends.helpers import discover
+        devices = discover('pyusb')
+        if devices:
+            return devices[0]['identifier']
+    except Exception:
+        pass
+    return None
+
+
+class USBBrotherPrinter:
+    """Brother QL over USB (pyusb backend).
+
+    Status is limited to presence detection — no media info available over USB.
+    Passes the live usb.core.Device instance to send() to avoid identifier
+    string-parsing issues in the backend.
+    """
+
+    def __init__(self, identifier: str):
+        self.identifier = identifier
+        self.model = "QL-820NWB"
+
+    def _get_device(self):
+        """Return the live usb.core.Device instance for this printer."""
+        from brother_ql.backends.helpers import discover
+        for d in discover('pyusb'):
+            if d['identifier'] == self.identifier:
+                return d['instance']
+        return None
+
+    def query_status(self) -> dict:
+        try:
+            connected = self._get_device() is not None
+        except Exception:
+            connected = False
+        return {"connected": connected, "status": None}
+
+    def send_instructions(self, instructions: bytes) -> dict:
+        device = self._get_device()
+        if device is None:
+            raise RuntimeError("USB printer not found")
+        return send(
+            instructions=instructions,
+            printer_identifier=device,
+            backend_identifier="pyusb",
+            blocking=True,
+        )
