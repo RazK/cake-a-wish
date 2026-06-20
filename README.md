@@ -18,7 +18,7 @@ Tablet (front-facing camera)
   DK-22251 label  →  out of the cake
 ```
 
-Staff run `/admin` on a laptop on the same WiFi. Guests never touch anything — a blow on the candle triggers the print automatically via Arduino mic + MediaPipe face detection.
+Staff run the app on a laptop on the same WiFi. Guests never touch anything — a blow on the candle triggers the print automatically via Arduino mic + MediaPipe face detection.
 
 ---
 
@@ -26,9 +26,7 @@ Staff run `/admin` on a laptop on the same WiFi. Guests never touch anything —
 
 | Route | Who | What |
 |-------|-----|-------|
-| `/admin` | Staff | Full control — camera, capture, template, gallery, settings |
-| `/blow/debug` | Staff | Tune blow detection thresholds, simulate blow events |
-| `/` | Guests | Kiosk — full-screen live view *(not yet built)* |
+| `/` | Staff | Admin — camera, capture, template, gallery, settings |
 
 ---
 
@@ -49,7 +47,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 # or: make dev
 ```
 
-Open `http://localhost:8000/admin`.
+Open `http://localhost:8000`.
 
 Set the printer IP in the Hardware Settings panel (default `10.140.224.9`). The status pill in the header turns green when the printer is reachable and a label is loaded.
 
@@ -85,7 +83,7 @@ Two independent signals fused server-side:
 | **Arduino** | Analog mic on A0, sends `LEVEL,{level},{threshold}` at 100ms intervals over serial |
 | **MediaPipe** | Browser-side face landmark detection; pursed-lip ratio triggers `POST /blow/event` |
 
-Either signal alone can trigger a print. `/blow/debug` lets you tune thresholds and simulate blow events without hardware.
+Either signal alone can trigger a print. Thresholds are tunable via the Arduino and Camera sliders in the Hardware Settings panel.
 
 ---
 

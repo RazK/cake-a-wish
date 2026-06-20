@@ -23,7 +23,7 @@ the cake prints their photo on a label that slides out like a polaroid.
                  │  DK-22251 tape      │  62mm red+black continuous
                  └──────────────────┘
 
-  Staff laptop  →  /admin  (same WiFi)   debug, retake, gallery
+  Staff laptop  →  /  (same WiFi)   debug, retake, gallery
 ```
 
 ---
@@ -32,8 +32,7 @@ the cake prints their photo on a label that slides out like a polaroid.
 
 | Route    | Audience | Purpose |
 |----------|----------|---------|
-| `/`      | Guests   | Kiosk — full-screen live view, blow-to-print, zero chrome |
-| `/admin` | Staff    | Full UI — capture, retake, template, gallery, settings |
+| `/`      | Staff    | Full UI — capture, retake, template, gallery, settings |
 
 Both pages talk to the same FastAPI server. The server holds printer state.
 
@@ -61,12 +60,12 @@ Both pages talk to the same FastAPI server. The server holds printer state.
 - **BlowEngine** — server fuses both signals; fires `on_blow(source, ts, will_print)` callback
 - **Blow-to-print toggle** — enable/disable auto-print on blow event
 - **Countdown overlay** — 3–2–1 over the canvas after blow detected; fires quick-print at zero; keyboard shortcuts (Space cancel, Enter skip)
-- **Blow debug page** `/blow/debug` — standalone test panel for tuning thresholds
+- **Threshold tuning** — Arduino and Camera sliders in the Hardware Settings panel
 
 ```
 Browser MediaPipe JS  →  POST /blow/event  →  ╮
                                                server fuses → SSE → all clients
-Arduino serial        →  blow_router.py    →  ╯
+Arduino serial        →  blow_detection/router.py    →  ╯
 ```
 
 ### Kiosk page (not yet built)
@@ -135,7 +134,7 @@ Disabled          opacity 0.35
 
 ## 5. Wireframes
 
-### /admin
+### /
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐

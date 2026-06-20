@@ -237,7 +237,7 @@ if os.path.isdir("static"):
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
 
-@app.get("/admin", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
 async def admin(request: Request):
     return _templates.TemplateResponse(request, "admin.html")
 
