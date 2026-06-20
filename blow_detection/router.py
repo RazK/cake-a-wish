@@ -9,6 +9,7 @@ Endpoints:
 import asyncio
 import json
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -180,7 +181,8 @@ def shutdown():
 
 # ── Routes ────────────────────────────────────────────────────────
 
-_TASK_FILE = Path(__file__).parent / "face_landmarker.task"
+_HERE = Path(os.environ["CAKE_BASE_DIR"]) / "blow_detection" if "CAKE_BASE_DIR" in os.environ else Path(__file__).parent
+_TASK_FILE = _HERE / "face_landmarker.task"
 
 
 @router.get("/blow/face_landmarker.task")

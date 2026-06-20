@@ -21,6 +21,11 @@ from label_printer.convertor import build_instructions, process_for_preview
 from label_printer.frames import REGISTRY
 from label_printer.printer import BrotherPrinter, BTBrotherPrinter, USBBrotherPrinter, find_usb_printer
 
+# ── Paths ────────────────────────────────────────────────────────────────────
+# When frozen by PyInstaller, CAKE_BASE_DIR points to sys._MEIPASS (bundled assets).
+# User-writable data lives next to the executable (CWD is set by launcher.py).
+_BASE_DIR = Path(os.environ["CAKE_BASE_DIR"]) if "CAKE_BASE_DIR" in os.environ else Path(__file__).parent
+
 # ── State ────────────────────────────────────────────────────────────────────
 
 _OVERLAY_DIR = Path("data") / "overlays"
@@ -351,10 +356,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(blow_router)
-_templates = Jinja2Templates(directory="templates")
+_templates = Jinja2Templates(directory=str(_BASE_DIR / "templates"))
 
-if os.path.isdir("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+if (_BASE_DIR / "static").is_dir():
+    app.mount("/static", StaticFiles(directory=str(_BASE_DIR / "static")), name="static")
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
 
