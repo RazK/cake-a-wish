@@ -55,13 +55,25 @@ Both pages talk to the same FastAPI server. The server holds printer state.
 - **Printer settings** — IP, password (collapsible, rarely needed)
 - **Printer status pill** — always in header, live-updating every ~1s
 
-### Kiosk page (future)
+### Blow detection (admin page)
+- **Arduino mic reader** — serial thread reads `LEVEL,{level},{threshold}` frames at 100ms; detects blow state transitions; broadcasts via SSE
+- **MediaPipe** — browser-side face landmark detection; pursed-lip ratio triggers `POST /blow/event`
+- **BlowEngine** — server fuses both signals; fires `on_blow(source, ts, will_print)` callback
+- **Blow-to-print toggle** — enable/disable auto-print on blow event
+- **Countdown overlay** — 3–2–1 over the canvas after blow detected; fires quick-print at zero; keyboard shortcuts (Space cancel, Enter skip)
+- **Blow debug page** `/blow/debug` — standalone test panel for tuning thresholds
+
+```
+Browser MediaPipe JS  →  POST /blow/event  →  ╮
+                                               server fuses → SSE → all clients
+Arduino serial        →  blow_router.py    →  ╯
+```
+
+### Kiosk page (not yet built)
 - Full-bleed camera feed with active template frame composited live
 - "Blow on the candle to print!" instruction
-- Arduino mic + MediaPipe blow detection → triggers quick-print automatically
-- Countdown overlay (3–2–1) after blow detected
-- Printing animation (photo slides down into printer)
 - Minimal status dot (no IP/settings exposed to guests)
+- Printing animation (photo slides down into printer)
 
 ---
 
@@ -242,10 +254,10 @@ the photo with branding/borders, then the result is sent to brother_ql.
 
 ### API
 ```
-GET  /frames          → [{id, name}, ...]
-POST /preview         → {image_data}  accepts frame_id
-POST /print           → {image_data, printer_ip, label, frame_id}
-POST /print/auto      → {image_data, frame_id}
+GET  /templates              → [{id, name}, ...]
+GET  /templates/{id}/overlay.png?w=W&h=H  → RGBA PNG for live preview
+POST /preview                → {image_data, template_id}  → dithered PNG
+POST /print                  → {image_data, template_id, printer_ip, label}
 ```
 
 ---
@@ -286,12 +298,21 @@ die-cut                           → matched by width × length
 
 ### Server API surface
 ```
-GET  /printer/status?printer_ip=…   register IP + return cached monitor state
-GET  /labels                        all known label types with pixel dimensions
-GET  /frames                        registered frame templates
+GET  /printer                       cached monitor state (connected, label, errors)
+PUT  /printer                       update printer IP, resets monitor
+GET  /templates                     registered frame templates [{id, name}]
+GET  /templates/{id}/overlay.png    RGBA overlay PNG for live canvas compositing
 POST /preview                       dither preview PNG (WYSIWYG)
-POST /print                         explicit IP + label print
-POST /print/auto                    use monitor's detected IP + label
+POST /print                         send job to printer, append to gallery
+GET  /photos                        gallery [{thumbnail, raw_data, index}]
+POST /photos                        save photo to gallery
+DELETE /photos/{index}              delete photo
+GET  /saved-templates               saved custom templates
+POST /saved-templates               save custom template
+POST /overlay/{slot}                upload PNG to slot (full/header/footer)
+GET  /blow/stream                   SSE: printer status, Arduino levels, blow events
+POST /blow/event                    receive blow from browser MediaPipe
+POST /blow/settings                 update enabled/sensitivity/threshold
 ```
 
 ---
@@ -343,11 +364,7 @@ Brother QL-820NWBc  →  DK-22251 label  →  out of the cake 🎂
 
 ## 10. Future Work
 
-- **Kiosk page** `/` — full-screen, countdown, printing animation
-- **Arduino integration** — mic detects blow → POST `/print/auto`
-- **MediaPipe** — webcam detects blow expression as second signal
-- **Gallery API** `GET /history` — server stores last 8 prints in memory
+- **Kiosk page** `/` — full-screen guest view, printing animation, no chrome
 - **QR code** on print — points to photo download or event page
 - **Mascots / stickers** — designer overlays on templates
 - **Multiple label support** — die-cut in addition to 62red continuous
-- **Brightness control** — client slider → PIL adjustment before preview/print

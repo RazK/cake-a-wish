@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Arduino: Compile",
+      "type": "shell",
+      "command": "/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli",
+      "args": [
+        "compile",
+        "--fqbn", "${config:arduino.fqbn}",
+        "${workspaceFolder}"
+      ],
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Arduino: Upload",
+      "type": "shell",
+      "command": "/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli",
+      "args": [
+        "upload",
+        "-p", "${config:arduino.port}",
+        "--fqbn", "${config:arduino.fqbn}",
+        "${workspaceFolder}"
+      ],
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": [],
+      "dependsOn": "Arduino: Compile"
+    }
+  ]
+}

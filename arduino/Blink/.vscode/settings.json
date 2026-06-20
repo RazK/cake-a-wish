@@ -1,0 +1,4 @@
+{
+  "arduino.fqbn": "arduino:avr:uno",
+  "arduino.port": "/dev/cu.usbserial-21310"
+}
