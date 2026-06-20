@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from PIL import Image
 from pydantic import BaseModel
 
-import blow_router
+from blow_detection import router as blow_router
 from label_printer.convertor import build_instructions, process_for_preview
 from label_printer.frames import REGISTRY
 from label_printer.printer import BrotherPrinter, BTBrotherPrinter
@@ -479,4 +479,4 @@ async def delete_overlay_file(slot: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("web:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
