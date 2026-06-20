@@ -95,7 +95,7 @@ Three built-in templates (Clean / Bold / Retro). To add a designer-supplied temp
 4. Drop the folder under `label_printer/frames/my-template/`
 5. Restart — template appears automatically in the admin UI
 
-See [PRODUCT.md](PRODUCT.md#6-template-system) for the full spec.
+See [PRODUCT.md](docs/PRODUCT.md#6-template-system) for the full spec.
 
 ---
 
@@ -109,5 +109,5 @@ Sketch is at `arduino/BlowDetector/BlowDetector.ino`. Flash it to any Arduino wi
 
 | Doc | Contents |
 |-----|----------|
-| [PRODUCT.md](PRODUCT.md) | Full product spec — physical setup, feature set, API surface, print pipeline |
-| [DESIGN.md](DESIGN.md) | Design tokens, component specs, layout, interaction model |
+| [PRODUCT.md](docs/PRODUCT.md) | Full product spec — physical setup, feature set, API surface, print pipeline |
+| [DESIGN.md](docs/DESIGN.md) | Design tokens, component specs, layout, interaction model |
