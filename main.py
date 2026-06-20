@@ -14,17 +14,19 @@ from fastapi.templating import Jinja2Templates
 from PIL import Image
 from pydantic import BaseModel
 
-import blow_router
+from blow_detection.router import router as blow_router, startup as blow_startup, shutdown as blow_shutdown
 from label_printer.convertor import build_instructions, process_for_preview
 from label_printer.frames import REGISTRY
 from label_printer.printer import BrotherPrinter, BTBrotherPrinter
 
 # ── State ────────────────────────────────────────────────────────────────────
 
+_OVERLAY_DIR = Path("data") / "overlays"
+_OVERLAY_DIR.mkdir(parents=True, exist_ok=True)
 _OVERLAY_PATHS = {
-    "header": Path("overlay_header.png"),
-    "footer": Path("overlay_footer.png"),
-    "full":   Path("overlay_full.png"),
+    "header": _OVERLAY_DIR / "header.png",
+    "footer": _OVERLAY_DIR / "footer.png",
+    "full":   _OVERLAY_DIR / "full.png",
 }
 
 _FALLBACK_LABEL = "62"
@@ -221,13 +223,13 @@ async def _monitor_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(_monitor_loop())
-    blow_router.startup()
+    blow_startup()
     yield
-    blow_router.shutdown()
+    blow_shutdown()
     task.cancel()
 
 app = FastAPI(lifespan=lifespan)
-app.include_router(blow_router.router)
+app.include_router(blow_router)
 _templates = Jinja2Templates(directory="templates")
 
 if os.path.isdir("static"):
@@ -235,7 +237,7 @@ if os.path.isdir("static"):
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
 
-@app.get("/admin", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
 async def admin(request: Request):
     return _templates.TemplateResponse(request, "admin.html")
 
@@ -477,4 +479,4 @@ async def delete_overlay_file(slot: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("web:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

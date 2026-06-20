@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cake A Wish — Admin (Static Preview)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Handjet:wght@100..900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       STATIC DEMO SHIM
+       Stubs all server calls so this file works without a running
+       Python server. Open in any browser — nothing to install.
+       Remove this block before deploying back into templates/.
+       ═══════════════════════════════════════════════════════════════ -->
+  <script>
+  (function () {
+
+    // ── Fallbacks in case MediaPipe module throws ──────────────────
+    window._capturedCameraImg = null;
+    window.freezeCamera = function () {};
+
+    // ── Fake thumbnail generator ───────────────────────────────────
+    function makeThumb(hue) {
+      const c = Object.assign(document.createElement('canvas'), { width: 348, height: 522 });
+      const x = c.getContext('2d');
+      const g = x.createLinearGradient(0, 0, c.width, c.height);
+      g.addColorStop(0, 'hsl(' + hue + ',55%,72%)');
+      g.addColorStop(1, 'hsl(' + (hue + 40) + ',55%,42%)');
+      x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);
+      x.fillStyle = 'rgba(20,10,60,.35)';
+      x.beginPath(); x.arc(c.width * .5, c.height * .28, c.width * .19, 0, Math.PI * 2); x.fill();
+      x.beginPath(); x.ellipse(c.width * .5, c.height * .63, c.width * .30, c.height * .21, 0, 0, Math.PI * 2); x.fill();
+      return c.toDataURL('image/jpeg', .75);
+    }
+
+    const THUMBS = [220, 290, 30, 170, 320, 85].map(makeThumb);
+
+    const FAKE_PHOTOS = THUMBS.map(function (t, i) {
+      return { thumbnail: t, raw_data: t, index: i };
+    });
+
+    const FAKE_PRINTER = {
+      connected: true, label_id: '62red', label_w: 696, label_h: 1044,
+      ip: '10.140.224.9', model: 'QL-820NWB',
+      media_w_mm: 62, media_h_mm: 0, status: 'Waiting', phase: 'Waiting', errors: []
+    };
+
+    const FAKE_SAVED_TEMPLATES = [{
+      name: 'header · left + footer',
+      thumbnail: makeThumb(260),
+      slots: { full: null, header: null, footer: null }
+    }];
+
+    // ── Fetch interceptor ──────────────────────────────────────────
+    const _realFetch = window.fetch.bind(window);
+    window.fetch = async function (url, opts) {
+      opts = opts || {};
+      const u   = typeof url === 'string' ? url : (url.url || '');
+      const mth = (opts.method || 'GET').toUpperCase();
+
+      function ok(body)  { return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } }); }
+      function no()      { return new Response('', { status: 404 }); }
+
+      if (u === '/printer')                                           return ok(FAKE_PRINTER);
+      if (u === '/photos'          && mth === 'GET')                  return ok(FAKE_PHOTOS);
+      if (u === '/photos'          && mth === 'POST')                 return ok({ ok: true });
+      if (/^\/photos\/\d+$/.test(u))                                  return ok({ ok: true });
+      if (u === '/saved-templates' && mth === 'GET')                  return ok(FAKE_SAVED_TEMPLATES);
+      if (u === '/saved-templates' && mth === 'POST')                 return ok({ ok: true });
+      if (/^\/saved-templates\/\d+$/.test(u) && mth === 'GET') {
+        const i = parseInt(u.split('/').pop());
+        return ok(Object.assign({}, FAKE_SAVED_TEMPLATES[i] || FAKE_SAVED_TEMPLATES[0],
+                  { slots: { full: null, header: null, footer: null } }));
+      }
+      if (/^\/saved-templates\/\d+$/.test(u))                        return ok({ ok: true });
+      if (u.startsWith('/overlay/') && mth === 'GET')                 return no();
+      if (u.startsWith('/overlay/'))                                  return ok({ ok: true });
+      if (u === '/preview'         && mth === 'POST') {
+        try { const b = JSON.parse(opts.body); return ok({ image_data: b.image_data }); } catch(e) { return ok({ image_data: '' }); }
+      }
+      if (u === '/print'           && mth === 'POST')                 return ok({ ok: true, thumbnail: THUMBS[0] });
+      if (u === '/blow/settings')                                     return ok({ ok: true });
+      if (u === '/blow/event')                                        return ok({ ok: true });
+      if (u.includes('face_landmarker'))                              return no();
+
+      return _realFetch(url, opts);
+    };
+
+    // ── Fake EventSource ───────────────────────────────────────────
+    const _RealESC = window.EventSource;
+    window.EventSource = function (url) {
+      if (typeof url === 'string' && !url.startsWith('/')) return new _RealESC(url);
+      const self   = this;
+      self.readyState = 1;
+      self.onmessage  = null;
+      self.close      = function () {};
+
+      function emit(data) { if (self.onmessage) self.onmessage({ data: JSON.stringify(data) }); }
+
+      setTimeout(function () {
+        emit({ arduino: { connected: true }, mediapipe: { active: false },
+               enabled: true, sensitivity: 0.5, arduino_threshold: 95 });
+      }, 150);
+
+      var _lvl = 30;
+      setInterval(function () {
+        _lvl = Math.max(8, Math.min(75, _lvl + (Math.random() - .48) * 18));
+        emit({ arduino_level: { level: Math.round(_lvl), threshold: 95 } });
+      }, 350);
+
+      setInterval(function () {
+        emit({ arduino: { connected: true }, mediapipe: { active: false },
+               enabled: true, sensitivity: 0.5, arduino_threshold: 95 });
+      }, 2000);
+    };
+
+    // ── Canvas placeholder (drawn once after layout settles) ───────
+    window.addEventListener('DOMContentLoaded', function () {
+      setTimeout(function () {
+        var cv  = document.getElementById('canvas');
+        if (!cv) return;
+        var W = cv.width, H = cv.height;
+        var ctx = cv.getContext('2d');
+
+        // Background
+        var bg = ctx.createLinearGradient(0, 0, W, H);
+        bg.addColorStop(0, '#ddd9ff'); bg.addColorStop(1, '#b8b0d0');
+        ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+        // Person silhouette
+        ctx.fillStyle = 'rgba(40,30,90,.32)';
+        ctx.beginPath(); ctx.arc(W * .5, H * .28, W * .2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(W * .5, H * .62, W * .31, H * .20, 0, 0, Math.PI * 2); ctx.fill();
+
+        // Header band
+        ctx.fillStyle = 'rgba(30,22,80,.80)';
+        ctx.fillRect(0, 0, W, H * .09);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold ' + Math.round(W * .072) + 'px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('iSTELive 26', W * .5, H * .045);
+
+        // Footer band
+        ctx.fillStyle = 'rgba(30,22,80,.80)';
+        ctx.fillRect(0, H * .88, W, H * .12);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold ' + Math.round(W * .062) + 'px sans-serif';
+        ctx.fillText('Learning Zone', W * .38, H * .945);
+      }, 700);
+    });
+
+  })();
+  </script>
+
+
+  <style>
+    /* ── Design Tokens ─────────────────────────────────────────── */
+    :root {
+      --bg-from:    #F0EEF8;
+      --bg-to:      #E8E4F5;
+      --surface:    #FFFFFF;
+      --border:     #E2DCF5;
+      --primary:    #7C6FF7;
+      --primary-dk: #6258D3;
+      --ghost:      #F2F0FE;
+      --accent:     #C9C2F8;
+      --text:       #2D2640;
+      --sub:        #8B83A8;
+      --muted:      #B8B0D0;
+      --green:      #3EBD87;
+      --cyan:       #22D3EE;
+      --red:        #E05F7B;
+      --amber:      #F59E0B;
+      --col-width:  260px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--text);
+      background: linear-gradient(150deg, var(--bg-from), var(--bg-to)) fixed;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Holy grail body ───────────────────────────────────────── */
+    .body-row {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Shared column styles ──────────────────────────────────── */
+    .left-col,
+    .right-col {
+      width: var(--col-width);
+      flex-shrink: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: width 0.22s cubic-bezier(.4,0,.2,1);
+    }
+
+    .left-col {
+      border-right: 1px solid var(--border);
+      background: rgba(255,255,255,0.30);
+    }
+    .right-col {
+      border-left: 1px solid var(--border);
+      background: rgba(255,255,255,0.30);
+    }
+    .left-col.collapsed  { width: 0; }
+    .right-col.collapsed { width: 0; }
+
+    /* ── Top bar ────────────────────────────────────────────────── */
+    .top-bar {
+      flex-shrink: 0;
+      height: 52px;
+      display: flex;
+      align-items: stretch;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.55);
+      backdrop-filter: blur(8px);
+    }
+
+    .col-head {
+      width: var(--col-width);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      cursor: pointer;
+      user-select: none;
+      overflow: hidden;
+      position: relative;
+      transition: background 0.15s;
+    }
+    .col-head:hover { background: rgba(124,111,247,0.08); }
+    .left-col-head  { border-right: 1px solid var(--border); }
+    .right-col-head { border-left:  1px solid var(--border); }
+
+    .col-head-icon    { font-size: 1rem; flex-shrink: 0; }
+    .col-head-label   { position: absolute; left: 0; right: 0; text-align: center;
+                        font-size: 0.7rem; font-weight: 700; letter-spacing: .07em;
+                        text-transform: uppercase; color: var(--sub);
+                        pointer-events: none; white-space: nowrap; }
+    .col-head-chevron { font-size: 0.82rem; color: var(--muted); flex-shrink: 0;
+                        transition: transform 0.22s cubic-bezier(.4,0,.2,1); }
+
+    .left-col-head  .col-head-chevron { margin-left: auto; }
+    .right-col-head .col-head-icon    { margin-left: auto; }
+
+    .left-col-head.collapsed  .col-head-chevron { transform: rotate(180deg); }
+    .right-col-head.collapsed .col-head-chevron { transform: rotate(-180deg); }
+
+    .app-title {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .header-title {
+      font-family: 'Handjet', monospace;
+      font-size: 1.6rem;
+      font-weight: 400;
+      letter-spacing: 0.01em;
+    }
+
+    /* ── Column body (scrollable cards) ───────────────────────── */
+    .col-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 12px 14px;
+      gap: 10px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: none;
+    }
+    .col-body::-webkit-scrollbar { display: none; }
+
+    /* ── Canvas area (center column) ───────────────────────────── */
+    .canvas-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 20px 20px 16px;
+      gap: 10px;
+    }
+
+    .canvas-wrap {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      overflow: hidden;
+      padding: 16px 0;
+    }
+
+    .label-frame {
+      flex-shrink: 0;
+      max-height: 65%;
+      display: flex;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 6px 32px rgba(44, 38, 64, .22);
+      padding: 8px 6px;
+    }
+
+    #canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      min-height: 0;
+      width: auto;
+      height: auto;
+      border-radius: 3px;
+      image-rendering: pixelated;
+    }
+
+    .canvas-info {
+      flex-shrink: 0;
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--sub);
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Action bar (center, below canvas) ─────────────────────── */
+    .action-bar {
+      flex-shrink: 0;
+      align-self: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+    #cd-progress {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(124,111,247,0.28);
+      transform-origin: left;
+      transform: scaleX(0);
+      pointer-events: none;
+      z-index: 0;
+    }
+    #cd-progress.active {
+      display: block;
+      animation: cd-fill var(--cd-dur, 3s) linear forwards;
+    }
+    #bar-live, #bar-captured, #bar-countdown { position: relative; z-index: 1; }
+    @keyframes cd-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+    /* ── Card ──────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 2px 14px rgba(44, 38, 64, .09);
+      padding: 12px 14px;
+      flex-shrink: 0;
+    }
+
+    .card.grow {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .card-label {
+      font-size: 0.63rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--sub);
+      margin-bottom: 8px;
+    }
+
+    /* ── Gallery ───────────────────────────────────────────────── */
+    .gallery-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .gallery-note {
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .gallery-strip {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .gallery-strip::-webkit-scrollbar { display: none; }
+
+    /* ── Status bar ────────────────────────────────────────────── */
+    .status-bar {
+      font-size: 0.7rem;
+      color: var(--muted);
+      min-height: 1em;
+      padding: 2px 0;
+      flex-shrink: 0;
+    }
+    .status-bar.ok  { color: var(--green); }
+    .status-bar.err { color: var(--red); }
+
+    /* ── Placeholder helpers ───────────────────────────────────── */
+    .placeholder {
+      color: var(--muted);
+      font-size: 0.78rem;
+      padding: 2px 0;
+    }
+
+    /* ── Segmented control ─────────────────────────────────────── */
+    .seg { display:flex; background:var(--ghost); border-radius:8px; padding:2px; }
+    .seg-btn { flex:1; padding:3px 12px; border:none; border-radius:6px; background:transparent;
+               font:inherit; font-size:0.72rem; font-weight:600; color:var(--muted); cursor:pointer;
+               transition:background .15s, color .15s, box-shadow .15s; }
+    .seg-btn.active { background:var(--surface); color:var(--text);
+                      box-shadow:0 1px 4px rgba(44,38,64,.12); }
+    .seg-btn.active.is-on { color:var(--primary); }
+
+    /* ── Pill ──────────────────────────────────────────────────── */
+    .pill { display:inline-flex; align-items:center; gap:4px; font-size:0.66rem; font-weight:600;
+            padding:2px 8px; border-radius:99px; border:1.5px solid var(--muted); color:var(--muted);
+            white-space:nowrap; transition:border-color .2s, color .2s; }
+    .pill.is-ok { border-color:var(--green);   color:var(--green); }
+    .pill.is-on { border-color:var(--primary); color:var(--primary); }
+
+    /* ── Blow card layout ──────────────────────────────────────── */
+    .btp-body    { display:flex; flex-direction:column; gap:8px; }
+    .btp-row     { display:flex; align-items:center; gap:8px; }
+    .btp-section { display:flex; flex-direction:column; gap:5px; }
+    .btp-section-hd { font-size:0.6rem; font-weight:700; letter-spacing:.08em;
+                       text-transform:uppercase; color:var(--muted); }
+    .btp-divider { border:none; border-top:1px solid var(--border); margin:0; }
+
+    /* blow indicator bars */
+    .blow-row  { display:flex; align-items:center; gap:8px; }
+    .blow-lbl  { font-size:0.69rem; flex-shrink:0; width:68px; }
+    .blow-track { flex:1; height:5px; background:var(--ghost); border-radius:3px; overflow:hidden; }
+    .blow-row.is-combo .blow-track { height:8px; }
+    .blow-row.is-combo .blow-lbl   { font-weight:600; }
+    .blow-fill { height:100%; width:0%; border-radius:3px; }
+
+
+    /* Arduino level bar */
+    .level-track  { position:relative; height:3px; background:var(--ghost); border-radius:2px; }
+    .level-fill   { height:100%; width:0%; background:var(--primary); border-radius:2px; transition:width .05s; }
+    .level-thresh { position:absolute; top:-2px; width:2px; height:7px;
+                    background:var(--sub); border-radius:1px; opacity:.5; }
+
+    /* control rows */
+    .ctrl-row { display:flex; align-items:center; gap:8px; }
+    .ctrl-lbl { font-size:0.69rem; color:var(--sub); flex-shrink:0; width:68px; }
+    .ctrl-val { font-size:0.68rem; font-weight:600; color:var(--text);
+                width:36px; text-align:right; flex-shrink:0; overflow:hidden; }
+    input[type=range] { flex:1; accent-color:var(--primary); cursor:pointer; height:4px; }
+    .num-input { width:44px; border:1.5px solid var(--border); border-radius:6px;
+                 padding:3px 6px; font:inherit; font-size:0.72rem; color:var(--text);
+                 background:var(--ghost); text-align:center; }
+    .num-input:focus { outline:none; border-color:var(--primary); }
+
+    /* ── Panel status indicator ────────────────────────────────── */
+    .card-head  { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .card-head .card-label { margin-bottom:0; }
+    .card-head .pstat      { margin-bottom:0; }
+
+    /* ── Toggle pill ───────────────────────────────────────────── */
+    .tog-pill { display:flex; background:var(--ghost); border-radius:99px; padding:2px; cursor:pointer; gap:0; }
+    .tog-opt  { padding:2px 10px; border-radius:99px; font-size:0.7rem; font-weight:600;
+                color:var(--muted); transition:background .15s, color .15s, box-shadow .15s; }
+    .tog-pill.is-on  .tog-opt.opt-on  { background:var(--green); color:#fff; box-shadow:0 1px 4px rgba(44,38,64,.15); }
+    .tog-pill.is-off .tog-opt.opt-off { background:var(--surface);  color:var(--text); box-shadow:0 1px 4px rgba(44,38,64,.12); }
+    .pstat      { display:flex; align-items:center; gap:4px; margin-bottom:8px; }
+    .pstat-dot  { width:7px; height:7px; border-radius:50%; background:var(--muted);
+                  flex-shrink:0; transition:background .3s; }
+    .pstat-text { font-size:0.72rem; font-weight:600; color:var(--muted); transition:color .3s; }
+    .pstat.ok   .pstat-dot  { background:var(--green); }
+    .pstat.ok   .pstat-text { color:var(--green); }
+    .pstat.warn .pstat-dot  { background:var(--amber); }
+    .pstat.warn .pstat-text { color:var(--amber); }
+    .pstat.err  .pstat-dot  { background:var(--red); }
+    .pstat.err  .pstat-text { color:var(--red); }
+    .pstat.blow .pstat-dot  { background:var(--cyan); }
+    .pstat.blow .pstat-text { color:var(--cyan); }
+    .pstat-detail { font-size:0.68rem; color:var(--sub); margin-top:-4px; margin-bottom:8px; }
+
+    /* ── Printer detail grid ───────────────────────────────────── */
+    .pdet { display:flex; flex-direction:column; gap:3px; margin-top:4px; }
+    .pdet-row { display:flex; align-items:baseline; gap:6px; }
+    .pdet-key { font-size:0.6rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+                color:var(--muted); flex-shrink:0; width:42px; }
+    .pdet-val { font-size:0.68rem; color:var(--text); flex:1; text-align:right;
+                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pdet-val.err { color:var(--red); }
+
+    /* ── Action button (small inline) ─────────────────────────── */
+    .act-btn { font:inherit; font-size:0.68rem; font-weight:600; color:var(--primary);
+               background:none; border:none; padding:0; cursor:pointer; white-space:nowrap;
+               text-decoration:none; flex-shrink:0; }
+    .act-btn:hover { color:var(--primary-dk); }
+    .act-btn--danger { color:var(--muted); }
+    .act-btn--danger:hover { color:var(--red); }
+
+    /* ── Camera preview ─────────────────────────────────────────── */
+    #cam-preview {
+      display: block; width: 100%; aspect-ratio: 4/3;
+      border-radius: 6px; background: var(--ghost);
+    }
+
+    /* ── Template slot ──────────────────────────────────────────── */
+    .tmpl-slot      { display:flex; flex-direction:column; gap:4px; padding:3px 0; }
+    .tmpl-slot-head { display:flex; align-items:center; gap:5px; min-height:20px; }
+    .tmpl-slot-name { font-size:0.68rem; font-weight:700; letter-spacing:.06em;
+                      text-transform:uppercase; color:var(--sub); flex:1; }
+    .tmpl-file-name { font-size:0.66rem; color:var(--green); flex-shrink:1; min-width:0;
+                      max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tmpl-divider   { border:0; border-top:1px solid var(--border); margin:4px 0; }
+
+    /* ── Alignment pill (4-option; dark active = selection, not on/off) ── */
+    .align-pill { display:flex; background:var(--ghost); border-radius:99px;
+                  padding:2px; margin-top:3px; width:100%; }
+    .align-opt  { flex:1; text-align:center; padding:3px 4px; border-radius:99px;
+                  font-size:0.62rem; font-weight:600; color:var(--muted); cursor:pointer;
+                  user-select:none; transition:background .15s, color .15s, box-shadow .15s; }
+    .align-opt.active { background:var(--text); color:var(--surface);
+                        box-shadow:0 1px 4px rgba(44,38,64,.15); }
+
+    /* ── Capture action buttons ────────────────────────────────── */
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:5px; font:inherit;
+           font-size:0.78rem; font-weight:600; border:none; border-radius:8px; padding:7px 18px;
+           cursor:pointer; transition:opacity .12s; white-space:nowrap; text-decoration:none; }
+    .btn:hover { opacity:0.82; }
+    .btn:disabled { opacity:0.35; cursor:not-allowed; }
+    .btn-primary { background:var(--primary); color:#fff; }
+    .btn-outline { background:transparent; border:1.5px solid var(--border); color:var(--text); }
+    .btn-ghost   { background:transparent; color:var(--sub); padding:7px 12px; border:none; }
+    .btn-danger  { background:var(--red); color:#fff; }
+    .btn kbd { font:inherit; font-size:0.72em; opacity:0.6; background:rgba(0,0,0,0.08);
+               border-radius:3px; padding:1px 5px; }
+    .btn-primary kbd, .btn-danger kbd { background:rgba(255,255,255,0.2); opacity:0.85; }
+    #bar-live, #bar-captured, #bar-countdown { display:flex; align-items:center; gap:8px; }
+
+    #cd-num { font-family:'Handjet',monospace; font-size:1.1em; font-weight:700; }
+
+    /* ── Right column 50/50 panels ────────────────────────────── */
+    #right-col .col-body { overflow:hidden; }
+    .rc-panel { flex:1 !important; min-height:0; display:flex; flex-direction:column;
+                overflow:hidden; flex-shrink:1 !important; }
+
+    /* ── Gallery grid (2xN, scrolls inside panel) ─────────────── */
+    .gallery-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:10px;
+                    flex:1; min-height:0; overflow-y:auto; overflow-x:hidden;
+                    align-content:start; scrollbar-width:none; }
+    .gallery-grid::-webkit-scrollbar { display:none; }
+    /* template cell: image box + label below */
+    .gg-cell { display:flex; flex-direction:column; gap:3px; cursor:pointer; min-width:0; }
+    .gg-cell:hover .gg-del { opacity:1; }
+    .gg-cell:hover .gg-item { border-color:var(--primary); }
+    .gg-item { position:relative; border-radius:7px; overflow:hidden;
+               border:2px solid var(--border); background:#111;
+               transition:border-color .15s; }
+    .gg-item--photo { height:130px; cursor:pointer; }
+    .gg-item--photo:hover { border-color:var(--primary); }
+    .gg-item--tmpl  { height:76px; background:#1a1628; }
+    .gg-thumb { display:block; width:100%; height:100%; object-fit:cover; }
+    .gg-item--tmpl .gg-thumb { object-fit:contain; }
+    .gg-label { font-size:0.5rem; color:var(--sub); text-align:center;
+                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 2px; }
+    .gg-del { position:absolute; top:3px; right:3px; width:16px; height:16px;
+              border-radius:50%; background:rgba(224,95,123,0.9); color:#fff; border:none;
+              font-size:0.6rem; font-weight:700; line-height:1; cursor:pointer;
+              display:flex; align-items:center; justify-content:center;
+              opacity:0; transition:opacity .15s; font-family:inherit; }
+    .gg-item:hover .gg-del { opacity:1; }
+    .gg-empty { grid-column:1/-1; font-size:0.72rem; color:var(--muted); padding:4px 0; }
+  </style>
+</head>
+<body>
+
+  <!-- Top bar: always-visible column headers + app title -->
+  <div class="top-bar">
+    <div class="col-head left-col-head" id="left-col-head" onclick="toggleCol('left')">
+      <span class="col-head-icon">⚙️</span>
+      <span class="col-head-label">Hardware Settings</span>
+      <span class="col-head-chevron">‹</span>
+    </div>
+    <div class="app-title">
+      <span class="header-title">🎂 Cake A Wish 🖨️</span>
+    </div>
+    <div class="col-head right-col-head" id="right-col-head" onclick="toggleCol('right')">
+      <span class="col-head-chevron">›</span>
+      <span class="col-head-label">Photo Settings</span>
+      <span class="col-head-icon">🖼️</span>
+    </div>
+  </div>
+
+  <div class="body-row">
+
+    <!-- Left — Hardware (foldable) -->
+    <div class="left-col" id="left-col">
+      <div class="col-body">
+
+      <!-- Printer -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-label">Printer</div>
+          <div class="pstat warn" id="printer-pstat">
+            <span class="pstat-text" id="printer-status-text">checking…</span>
+            <span class="pstat-dot"></span>
+          </div>
+        </div>
+        <div class="pdet" id="printer-detail"></div>
+      </div>
+
+      <!-- Camera -->
+      <div class="card" id="cam-card">
+        <div class="card-head">
+          <div class="card-label">Camera</div>
+          <div class="pstat" id="cam-pstat">
+            <span class="pstat-text" id="cam-status">initialising…</span>
+            <span class="pstat-dot"></span>
+          </div>
+        </div>
+        <canvas id="cam-preview"></canvas>
+        <div class="level-track" style="margin-top:8px">
+          <div class="level-fill"   id="cam-nw-fill"   style="background:var(--primary);width:0%"></div>
+          <div class="level-thresh" id="cam-nw-thresh" style="left:62%"></div>
+        </div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="cam-nw-val">—</div>
+        <div class="ctrl-row" style="margin-top:6px">
+          <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">lip threshold</span>
+          <input type="range" id="adm-sens" min="20" max="80" value="50">
+          <span id="adm-sens-val" style="display:none">0.50</span>
+        </div>
+      </div>
+
+      <!-- Arduino -->
+      <div class="card" id="ard-card">
+        <div class="card-head">
+          <div class="card-label">Arduino</div>
+          <div class="pstat" id="ard-pstat">
+            <span class="pstat-text" id="ard-status-text">disconnected</span>
+            <span class="pstat-dot"></span>
+          </div>
+        </div>
+        <div class="level-track">
+          <div class="level-fill"   id="btp-level-fill"></div>
+          <div class="level-thresh" id="btp-level-thresh" style="left:80%"></div>
+        </div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="ard-level-val">—</div>
+        <div class="ctrl-row" style="margin-top:6px">
+          <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">threshold</span>
+          <input type="range" id="adm-ard-thresh" min="1" max="200" value="95">
+          <span id="adm-ard-thresh-val" style="display:none">95</span>
+        </div>
+      </div>
+
+      <!-- Blow to Print -->
+      <div class="card">
+        <div class="card-head" style="margin-bottom:0">
+          <div class="card-label" style="margin-bottom:0">Blow to Print</div>
+          <div class="tog-pill is-off" id="btp-toggle" onclick="btpSetEnabled(!this.classList.contains('is-on'))">
+            <span class="tog-opt opt-on">On</span>
+            <span class="tog-opt opt-off">Off</span>
+          </div>
+        </div>
+        <div style="margin-top:8px" class="blow-row is-combo">
+          <span class="blow-lbl" style="font-size:0.66rem">Combined</span>
+          <div class="blow-track">
+            <div class="blow-fill" id="adm-bar-comb" style="background:var(--green);width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      </div><!-- .col-body -->
+    </div><!-- .left-col -->
+
+    <!-- Center — canvas + action bar -->
+    <div class="canvas-area">
+
+      <div class="canvas-wrap">
+        <div class="label-frame">
+          <canvas id="canvas" width="696" height="1044"></canvas>
+        </div>
+        <div class="canvas-info" id="canvas-info">62red · 696 × 1044 px</div>
+      </div>
+
+      <div class="card action-bar">
+        <div id="cd-progress"></div>
+        <div id="bar-live">
+          <button class="btn btn-outline" id="btn-capture" onclick="doCapture()">📷 Capture</button>
+          <button class="btn btn-outline" id="btn-quick-print" onclick="doQuickPrint()">🖨️ Quick Print</button>
+        </div>
+        <div id="bar-captured" style="display:none">
+          <button class="btn btn-outline" onclick="doRetake()">↩️ Retake</button>
+          <button class="btn btn-primary" id="btn-print" onclick="doPrint()">🖨️ Print</button>
+        </div>
+        <div id="bar-countdown" style="display:none">
+          <button class="btn btn-outline" style="color:var(--red);background:var(--surface)" onclick="doRetake()"><kbd>Space</kbd> ✕ Cancel</button>
+          <button class="btn btn-primary" onclick="skipCountdown()"><kbd>Enter</kbd> 🖨️ Print now &thinsp;<span id="cd-num">3</span></button>
+        </div>
+      </div>
+
+    </div><!-- .canvas-area -->
+
+    <!-- Right — Photo (foldable) -->
+    <div class="right-col" id="right-col">
+      <div class="col-body">
+
+      <!-- ── Template card ── -->
+      <div class="card rc-panel">
+        <div class="card-label" style="margin-bottom:10px">Template</div>
+
+        <!-- Full -->
+        <div class="tmpl-slot">
+          <div class="tmpl-slot-head">
+            <span class="tmpl-slot-name">Full</span>
+            <label class="act-btn" id="overlay-load-full" for="overlay-input-full">Load</label>
+            <span  id="overlay-file-full" class="tmpl-file-name" style="display:none"></span>
+            <input type="file" id="overlay-input-full" accept="image/png" style="display:none">
+            <button id="overlay-remove-full" class="act-btn act-btn--danger" style="display:none" onclick="removeOverlay('full')">✕</button>
+          </div>
+        </div>
+
+        <div class="tmpl-divider"></div>
+
+        <!-- Header -->
+        <div class="tmpl-slot">
+          <div class="tmpl-slot-head">
+            <span class="tmpl-slot-name">Header</span>
+            <label class="act-btn" id="overlay-load-header" for="overlay-input-header">Load</label>
+            <span  id="overlay-file-header" class="tmpl-file-name" style="display:none"></span>
+            <input type="file" id="overlay-input-header" accept="image/png" style="display:none">
+            <button id="overlay-remove-header" class="act-btn act-btn--danger" style="display:none" onclick="removeOverlay('header')">✕</button>
+          </div>
+          <div class="align-pill" id="align-header" style="display:none">
+            <span class="align-opt active" data-val="full"   onclick="setAlign('header','full')">Full</span>
+            <span class="align-opt"        data-val="left"   onclick="setAlign('header','left')">Left</span>
+            <span class="align-opt"        data-val="center" onclick="setAlign('header','center')">Center</span>
+            <span class="align-opt"        data-val="right"  onclick="setAlign('header','right')">Right</span>
+          </div>
+        </div>
+
+        <div class="tmpl-divider"></div>
+
+        <!-- Footer -->
+        <div class="tmpl-slot">
+          <div class="tmpl-slot-head">
+            <span class="tmpl-slot-name">Footer</span>
+            <label class="act-btn" id="overlay-load-footer" for="overlay-input-footer">Load</label>
+            <span  id="overlay-file-footer" class="tmpl-file-name" style="display:none"></span>
+            <input type="file" id="overlay-input-footer" accept="image/png" style="display:none">
+            <button id="overlay-remove-footer" class="act-btn act-btn--danger" style="display:none" onclick="removeOverlay('footer')">✕</button>
+          </div>
+          <div class="align-pill" id="align-footer" style="display:none">
+            <span class="align-opt active" data-val="full"   onclick="setAlign('footer','full')">Full</span>
+            <span class="align-opt"        data-val="left"   onclick="setAlign('footer','left')">Left</span>
+            <span class="align-opt"        data-val="center" onclick="setAlign('footer','center')">Center</span>
+            <span class="align-opt"        data-val="right"  onclick="setAlign('footer','right')">Right</span>
+          </div>
+        </div>
+
+        <button class="btn btn-outline" style="width:100%;margin-top:10px" onclick="saveTemplate()">💾 Save template</button>
+
+        <div class="gallery-grid" id="tmpl-gallery">
+          <span class="gg-empty">No saved templates</span>
+        </div>
+      </div>
+
+      <!-- ── Photo card ── -->
+      <div class="card rc-panel">
+        <div class="card-label">Photos</div>
+        <div class="ctrl-row">
+          <span class="ctrl-lbl">Brightness</span>
+          <input type="range" id="brightness-slider" min="0" max="200" value="100">
+          <span class="ctrl-val" id="brightness-val">0</span>
+        </div>
+        <button class="btn btn-outline" id="save-photo-btn" style="width:100%;margin-top:8px" onclick="savePhoto()" disabled>💾 Save photo</button>
+
+        <div class="gallery-grid" id="photo-gallery">
+          <span class="gg-empty">No saved photos</span>
+        </div>
+      </div>
+
+      <div class="status-bar" id="status-bar"></div>
+
+      </div><!-- .col-body -->
+    </div><!-- .right-col -->
+
+  </div>
+
+
+<script>
+// ── Column fold ───────────────────────────────────────────────────
+function toggleCol(side) {
+  document.getElementById(side + '-col').classList.toggle('collapsed');
+  document.getElementById(side + '-col-head').classList.toggle('collapsed');
+}
+
+// ── Global state ──────────────────────────────────────────────────
+window.ardBlowing    = false;
+window.mpBlowing     = false;
+window.uiState       = 'live';
+window.brightnessVal = 100;
+let _btpEnabled        = false;
+let _btpUserSet        = false;  // true once user has manually toggled
+let _brightnessVal     = 100;
+let _countdownTimer    = null;
+
+// ── Blow to Print ─────────────────────────────────────────────────
+
+function btpSetEnabled(on) {
+  _btpUserSet = true;
+  fetch('/blow/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: on }),
+  });
+  _btpApplyEnabled(on);
+}
+
+function _btpApplyEnabled(on) {
+  _btpEnabled = on;
+  document.getElementById('btp-toggle').className = 'tog-pill ' + (on ? 'is-on' : 'is-off');
+}
+
+function _btpSyncFromServer(on) {
+  // Only sync from server heartbeat before user has manually toggled
+  if (!_btpUserSet) _btpApplyEnabled(on);
+}
+
+function _updateCombBar() {
+  const combined = window.ardBlowing && window.mpBlowing;
+  document.getElementById('adm-bar-comb').style.width = combined ? '100%' : '0%';
+  if (combined) {
+    console.log('[BTP] combined — uiState:', window.uiState, '| enabled:', _btpEnabled);
+    if (window.uiState === 'live' && _btpEnabled) startCountdown();
+  }
+}
+
+// Lip threshold (read by the MediaPipe module)
+window.btpThreshold = 0.50;
+const _sensEl = document.getElementById('adm-sens');
+_sensEl.addEventListener('input', () => {
+  window.btpThreshold = _sensEl.value / 100;
+  document.getElementById('adm-sens-val').textContent = window.btpThreshold.toFixed(2);
+});
+_sensEl.addEventListener('change', () => {
+  fetch('/blow/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sensitivity: _sensEl.value / 100 }),
+  });
+});
+
+// Arduino threshold
+const _ardThreshEl = document.getElementById('adm-ard-thresh');
+_ardThreshEl.addEventListener('change', () => {
+  const val = parseInt(_ardThreshEl.value);
+  document.getElementById('adm-ard-thresh-val').textContent = val;
+  fetch('/blow/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ arduino_threshold: val }),
+  });
+});
+
+// ── Custom overlays (header / footer / full) ─────────────────────
+// Each slot: { bitmap: ImageBitmap, name: string, align: 'full'|'left'|'center'|'right' }
+
+window.customOverlays = { header: null, footer: null, full: null };
+
+function setAlign(slot, val) {
+  const ov = window.customOverlays[slot];
+  if (!ov) return;
+  ov.align = val;
+  document.querySelectorAll('#align-' + slot + ' .align-opt').forEach(el => {
+    el.classList.toggle('active', el.dataset.val === val);
+  });
+}
+
+function _setSlotUI(slot, name) {
+  document.getElementById('overlay-load-'   + slot).style.display = name ? 'none' : '';
+  const fn = document.getElementById('overlay-file-' + slot);
+  fn.textContent  = name || '';
+  fn.style.display = name ? '' : 'none';
+  document.getElementById('overlay-remove-' + slot).style.display = name ? '' : 'none';
+  const ap = document.getElementById('align-' + slot);
+  if (ap) ap.style.display = name ? '' : 'none';
+}
+
+async function _loadOverlayBlob(slot, blob, name) {
+  if (slot === 'full') {
+    if (window.customOverlays.header) { window.customOverlays.header = null; _setSlotUI('header', null); }
+    if (window.customOverlays.footer) { window.customOverlays.footer = null; _setSlotUI('footer', null); }
+  } else {
+    if (window.customOverlays.full) { window.customOverlays.full = null; _setSlotUI('full', null); }
+  }
+  const bitmap = await createImageBitmap(blob);
+  window.customOverlays[slot] = { bitmap, name, align: 'full' };
+  _setSlotUI(slot, name);
+}
+
+// Load persisted overlays on page load
+['header', 'footer', 'full'].forEach(slot => {
+  fetch('/overlay/' + slot).then(async r => {
+    if (r.ok) await _loadOverlayBlob(slot, await r.blob(), slot + '.png');
+  }).catch(() => {});
+});
+
+['header', 'footer', 'full'].forEach(slot => {
+  document.getElementById('overlay-input-' + slot).addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file);
+    if (slot === 'full') {
+      await Promise.all([
+        fetch('/overlay/header', { method: 'DELETE' }),
+        fetch('/overlay/footer', { method: 'DELETE' }),
+      ]);
+    } else {
+      await fetch('/overlay/full', { method: 'DELETE' });
+    }
+    await fetch('/overlay/' + slot, { method: 'POST', body: form });
+    await _loadOverlayBlob(slot, file, file.name);
+    e.target.value = '';
+  });
+});
+
+async function removeOverlay(slot) {
+  await fetch('/overlay/' + slot, { method: 'DELETE' });
+  window.customOverlays[slot] = null;
+  _setSlotUI(slot, null);
+}
+
+// ── Printer polling ───────────────────────────────────────────────
+
+window.printerState = { label_w: 696, label_h: 1044, label_id: '62red', connected: false };
+
+function _updatePrinter(d) {
+  window.printerState = d;
+
+  const pstat      = document.getElementById('printer-pstat');
+  const statusText = document.getElementById('printer-status-text');
+
+  const clsMap = { online: 'ok', printing: 'ok', checking: 'warn', error: 'err', offline: '' };
+  const lblMap = { online: 'online', printing: 'printing…', checking: 'checking…', error: 'error', offline: 'offline' };
+  const newCls  = 'pstat' + (clsMap[d.status] ? ' ' + clsMap[d.status] : '');
+  const newText = lblMap[d.status] ?? d.status;
+
+  if (pstat.className        !== newCls)  pstat.className        = newCls;
+  if (statusText.textContent !== newText) statusText.textContent = newText;
+
+  // Printer detail grid
+  const detail = document.getElementById('printer-detail');
+  const rows = [];
+  if (d.connection_type === 'bt') {
+    rows.push(['Mode', 'Bluetooth']);
+    if (d.bt_device) rows.push(['Dev', d.bt_device]);
+  } else {
+    rows.push(['Mode', 'WiFi']);
+    if (d.ip) rows.push(['IP', d.ip]);
+  }
+  if (d.model) rows.push(['Model', d.model]);
+  if (d.connected) {
+    if (d.media_w_mm) {
+      const mmH = d.media_h_mm ? d.media_h_mm + ' mm' : '∞ (cont.)';
+      rows.push(['Media', d.media_w_mm + ' × ' + mmH]);
+    }
+    if (d.label_id) rows.push(['Label', d.label_id]);
+    if (d.label_w && d.label_h) rows.push(['Px', d.label_w + ' × ' + d.label_h]);
+    if (d.phase)  rows.push(['Phase', d.phase]);
+  }
+  if (d.errors && d.errors.length) {
+    rows.push(['Error', d.errors.join(' · '), 'err']);
+  }
+  const newHtml = rows.map(([k, v, cls]) =>
+    `<div class="pdet-row"><span class="pdet-key">${k}</span><span class="pdet-val${cls ? ' '+cls : ''}">${v}</span></div>`
+  ).join('');
+  if (detail.innerHTML !== newHtml) detail.innerHTML = newHtml;
+
+  // Print buttons — disabled + relabelled when printer offline
+  const _offline = !d.connected;
+  const _offLabel = '🖨️ Not connected';
+  ['btn-print', 'btn-quick-print'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.disabled = _offline;
+    const _label = id === 'btn-print' ? '🖨️ Print' : '🖨️ Quick Print';
+    btn.textContent = _offline ? _offLabel : _label;
+  });
+
+  // Canvas resize
+  const canvas = document.getElementById('canvas');
+  const info   = document.getElementById('canvas-info');
+  if (d.connected && d.label_w && d.label_h && (canvas.width !== d.label_w || canvas.height !== d.label_h)) {
+    canvas.width             = d.label_w;
+    canvas.height            = d.label_h;
+    canvas.style.aspectRatio = d.label_w + ' / ' + d.label_h;
+    const newInfo = d.label_id + ' · ' + d.label_w + ' × ' + d.label_h + ' px';
+    if (info.textContent !== newInfo) info.textContent = newInfo;
+  }
+  // Ensure label-frame max-height is a concrete px value (fallback for % resolution in nested flex)
+  const frame = canvas.closest('.label-frame');
+  const wrap  = canvas.closest('.canvas-wrap');
+  if (frame && wrap && wrap.clientHeight) {
+    const limit = Math.floor(wrap.clientHeight * 0.65) + 'px';
+    if (frame.style.maxHeight !== limit) frame.style.maxHeight = limit;
+  }
+}
+
+(async function _pollPrinter() {
+  try {
+    const r = await fetch('/printer');
+    if (r.ok) _updatePrinter(await r.json());
+  } catch {}
+  setTimeout(_pollPrinter, 2000);
+})();
+
+// ── SSE ───────────────────────────────────────────────────────────
+const _sse = new EventSource('/blow/stream');
+_sse.onmessage = e => {
+  let d; try { d = JSON.parse(e.data); } catch { return; }
+
+  if (d.arduino_level) {
+    const al = d.arduino_level;
+    const sliderThresh = parseInt(_ardThreshEl.value);
+    const dispThresh = sliderThresh || al.threshold || 95;
+    document.getElementById('btp-level-fill').style.width =
+      Math.min(100, (al.level / dispThresh) * 100) + '%';
+    document.getElementById('btp-level-thresh').style.left =
+      Math.min(96, (dispThresh / 200) * 100) + '%';
+    document.getElementById('ard-level-val').textContent =
+      al.level + ' / ' + dispThresh;
+    window.ardBlowing = al.level >= dispThresh;
+    _updateCombBar();
+    return;
+  }
+
+  // 1s status heartbeat
+  if (d.arduino !== undefined) {
+    const ok = d.arduino.connected;
+    document.getElementById('ard-pstat').className   = 'pstat ' + (ok ? 'ok' : '');
+    document.getElementById('ard-status-text').textContent = ok ? 'connected' : 'disconnected';
+  }
+  if (d.enabled     !== undefined) _btpSyncFromServer(d.enabled);
+  if (d.sensitivity !== undefined) {
+    _sensEl.value = Math.round(d.sensitivity * 100);
+    window.btpThreshold = d.sensitivity;
+    document.getElementById('adm-sens-val').textContent = d.sensitivity.toFixed(2);
+  }
+  if (d.arduino_threshold !== undefined && d.arduino_threshold !== null) {
+    _ardThreshEl.value = d.arduino_threshold;
+    document.getElementById('adm-ard-thresh-val').textContent = d.arduino_threshold;
+  }
+};
+
+// ── Live canvas filter ────────────────────────────────────────────
+
+function _applyLiveFilter() {
+  document.getElementById('canvas').style.filter = 'grayscale(1)';
+}
+
+function _setBarState(state) {
+  ['live', 'captured', 'countdown'].forEach(s => {
+    document.getElementById('bar-' + s).style.display = s === state ? '' : 'none';
+  });
+  document.getElementById('save-photo-btn').disabled = state !== 'captured';
+}
+
+function setStatus(msg, cls) {
+  const sb = document.getElementById('status-bar');
+  sb.textContent = msg;
+  sb.className = 'status-bar' + (cls ? ' ' + cls : '');
+}
+
+// ── Print flow ────────────────────────────────────────────────────
+
+async function _executePrint() {
+  _stopProgress();
+  const dataUrl = document.getElementById('canvas').toDataURL('image/jpeg', 0.92);
+  const rawData = window._capturedCameraImg
+    ? window._capturedCameraImg.toDataURL('image/jpeg', 0.92)
+    : null;
+  setStatus('Printing…');
+  try {
+    const r = await fetch('/print', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_data: dataUrl, raw_data: rawData }),
+    });
+    if (!r.ok) throw new Error('print failed');
+    setStatus('Printed!', 'ok');
+    _loadPhotos();
+  } catch(e) {
+    setStatus('Print error', 'err');
+  }
+  setTimeout(() => {
+    setStatus('');
+    window.uiState = 'live';
+    window._capturedCameraImg = null;
+    _applyLiveFilter();
+    _setBarState('live');
+  }, 1500);
+}
+
+// ── Public actions ────────────────────────────────────────────────
+
+function doCapture() {
+  if (window.uiState !== 'live') return;
+  window.freezeCamera();
+  window.uiState = 'captured';
+  _applyLiveFilter();
+  _setBarState('captured');
+}
+
+function startCountdown() {
+  if (window.uiState !== 'live') return;
+  window.freezeCamera();
+  window.uiState = 'countdown';
+  _applyLiveFilter();
+  let secs = 3;
+  document.getElementById('cd-num').textContent = secs;
+  const prog = document.getElementById('cd-progress');
+  prog.classList.remove('active');
+  void prog.offsetWidth;
+  prog.style.setProperty('--cd-dur', secs + 's');
+  prog.classList.add('active');
+  _setBarState('countdown');
+  _countdownTimer = setInterval(() => {
+    secs--;
+    document.getElementById('cd-num').textContent = secs;
+    if (secs <= 0) {
+      clearInterval(_countdownTimer); _countdownTimer = null;
+      _executePrint();
+    }
+  }, 1000);
+}
+
+function _stopProgress() {
+  document.getElementById('cd-progress').classList.remove('active');
+}
+
+function skipCountdown() {
+  if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
+  _stopProgress();
+  _executePrint();
+}
+
+function doQuickPrint() { startCountdown(); }
+
+function doRetake() {
+  if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
+  _stopProgress();
+  window._capturedCameraImg = null;
+  window.uiState = 'live';
+  _applyLiveFilter();
+  _setBarState('live');
+  setStatus('');
+}
+
+async function doPrint() {
+  if (window.uiState !== 'captured') return;
+  _setBarState('live');
+  await _executePrint();
+}
+
+async function savePhoto() {
+  if (!window._capturedCameraImg) { setStatus('Nothing captured', 'err'); return; }
+  const raw_data = window._capturedCameraImg.toDataURL('image/jpeg', 0.92);
+  try {
+    await fetch('/photos', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw_data }),
+    });
+    setStatus('Photo saved', 'ok');
+    _loadPhotos();
+    setTimeout(() => setStatus(''), 1500);
+  } catch { setStatus('Save failed', 'err'); }
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && window.uiState === 'live') {
+    e.preventDefault(); doQuickPrint(); return;
+  }
+  if (window.uiState !== 'countdown') return;
+  if (e.key === ' ')     { e.preventDefault(); doRetake(); }
+  else if (e.key === 'Enter') { e.preventDefault(); skipCountdown(); }
+});
+
+// ── Brightness slider ─────────────────────────────────────────────
+document.getElementById('brightness-slider').addEventListener('input', function() {
+  _brightnessVal = parseInt(this.value);
+  window.brightnessVal = _brightnessVal;
+  const offset = _brightnessVal - 100;
+  document.getElementById('brightness-val').textContent = (offset > 0 ? '+' : '') + offset;
+});
+
+// ── Template gallery ──────────────────────────────────────────────
+
+function _templateAutoName() {
+  const { header, footer, full } = window.customOverlays;
+  const parts = [];
+  if (full)   parts.push(full.name.replace(/\.[^.]+$/, ''));
+  if (header) parts.push(header.name.replace(/\.[^.]+$/, '') + (header.align !== 'full' ? ' · ' + header.align : ''));
+  if (footer) parts.push(footer.name.replace(/\.[^.]+$/, '') + (footer.align !== 'full' ? ' · ' + footer.align : ''));
+  return parts.join(' + ') || 'template';
+}
+
+function _slotToPayload(slot) {
+  const ov = window.customOverlays[slot];
+  if (!ov) return null;
+  const c = document.createElement('canvas');
+  c.width = ov.bitmap.width; c.height = ov.bitmap.height;
+  c.getContext('2d').drawImage(ov.bitmap, 0, 0);
+  return { align: ov.align, data_url: c.toDataURL('image/png'), original_name: ov.name };
+}
+
+async function saveTemplate() {
+  const { header, footer, full } = window.customOverlays;
+  if (!header && !footer && !full) { setStatus('No overlay loaded', 'err'); return; }
+  try {
+    await fetch('/saved-templates', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: _templateAutoName(),
+        slots: { full: _slotToPayload('full'), header: _slotToPayload('header'), footer: _slotToPayload('footer') },
+      }),
+    });
+    setStatus('Template saved', 'ok');
+    _loadSavedTemplates();
+    setTimeout(() => setStatus(''), 1500);
+  } catch { setStatus('Save failed', 'err'); }
+}
+
+async function _loadSavedTemplates() {
+  try {
+    const r = await fetch('/saved-templates');
+    if (!r.ok) return;
+    const items = await r.json();
+    const grid = document.getElementById('tmpl-gallery');
+    if (!items.length) {
+      grid.innerHTML = '<span class="gg-empty">No saved templates</span>';
+      return;
+    }
+    grid.innerHTML = items.map((item, i) =>
+      '<div class="gg-cell" data-i="' + i + '">' +
+        '<div class="gg-item gg-item--tmpl">' +
+          (item.thumbnail ? '<img src="' + item.thumbnail + '" class="gg-thumb">' : '') +
+          '<button class="gg-del" data-i="' + i + '" title="Delete">✕</button>' +
+        '</div>' +
+        '<div class="gg-label">' + item.name + '</div>' +
+      '</div>'
+    ).join('');
+    grid.querySelectorAll('.gg-cell').forEach(el => {
+      el.addEventListener('click', async e => {
+        if (e.target.classList.contains('gg-del')) return;
+        const res = await fetch('/saved-templates/' + parseInt(el.dataset.i));
+        if (res.ok) _applyTemplate(await res.json());
+      });
+    });
+    grid.querySelectorAll('.gg-del').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
+        await fetch('/saved-templates/' + btn.dataset.i, { method: 'DELETE' });
+        _loadSavedTemplates();
+      });
+    });
+  } catch {}
+}
+
+async function _applyTemplate(tmpl) {
+  // Pre-load all bitmaps before touching current state → no flicker
+  const built = {};
+  for (const slot of ['full', 'header', 'footer']) {
+    const data = tmpl.slots[slot];
+    if (!data) { built[slot] = null; continue; }
+    const blob = await (await fetch(data.data_url)).blob();
+    built[slot] = { bitmap: await createImageBitmap(blob), name: data.original_name, align: data.align, blob };
+  }
+  // Atomic swap
+  ['full', 'header', 'footer'].forEach(s => {
+    window.customOverlays[s] = built[s] ? { bitmap: built[s].bitmap, name: built[s].name, align: built[s].align } : null;
+    _setSlotUI(s, built[s] ? built[s].name : null);
+    if (built[s]) {
+      document.querySelectorAll('#align-' + s + ' .align-opt').forEach(el =>
+        el.classList.toggle('active', el.dataset.val === built[s].align));
+    }
+  });
+  // Persist overlay files in background (survives page reload)
+  for (const slot of ['full', 'header', 'footer']) {
+    if (!built[slot]) { fetch('/overlay/' + slot, { method: 'DELETE' }).catch(() => {}); continue; }
+    const form = new FormData();
+    form.append('file', built[slot].blob, built[slot].name);
+    fetch('/overlay/' + slot, { method: 'POST', body: form }).catch(() => {});
+  }
+}
+
+// ── Photo gallery ─────────────────────────────────────────────────
+
+async function _loadPhotos() {
+  try {
+    const r = await fetch('/photos');
+    if (!r.ok) return;
+    const items = await r.json();
+    const grid = document.getElementById('photo-gallery');
+    if (!items.length) {
+      grid.innerHTML = '<span class="gg-empty">No saved photos</span>';
+      return;
+    }
+    grid.innerHTML = items.map((item, i) =>
+      '<div class="gg-item gg-item--photo" data-i="' + i + '">' +
+        '<img src="' + item.thumbnail + '" class="gg-thumb">' +
+        '<button class="gg-del" data-i="' + i + '" title="Delete">✕</button>' +
+      '</div>'
+    ).join('');
+    grid.querySelectorAll('.gg-item').forEach(el => {
+      el.addEventListener('click', e => {
+        if (e.target.classList.contains('gg-del')) return;
+        _loadPhotoItem(items[parseInt(el.dataset.i)]);
+      });
+    });
+    grid.querySelectorAll('.gg-del').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
+        await fetch('/photos/' + btn.dataset.i, { method: 'DELETE' });
+        _loadPhotos();
+      });
+    });
+  } catch {}
+}
+
+async function _loadPhotoItem(item) {
+  if (window.uiState === 'countdown') return;
+  try {
+    const img = new Image();
+    img.src = item.raw_data;
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+    const c = document.getElementById('canvas');
+    const off = document.createElement('canvas');
+    off.width = c.width; off.height = c.height;
+    off.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    window._capturedCameraImg = off;
+    window.uiState = 'captured';
+    _applyLiveFilter();
+    _setBarState('captured');
+  } catch { setStatus('Load failed', 'err'); }
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+_applyLiveFilter();
+_setBarState('live');
+_loadSavedTemplates();
+_loadPhotos();
+</script>
+
+
+<script type="module">
+import { FaceLandmarker, FilesetResolver }
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const MOUTH_L = 61, MOUTH_R = 291, EYE_L = 33, EYE_R = 263;
+const MIN_FRAMES = 3;
+
+const canvas = document.getElementById('cam-preview');
+const ctx    = canvas.getContext('2d');
+
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+function setCamPstat(state, text) {
+  document.getElementById('cam-pstat').className   = 'pstat ' + state;
+  document.getElementById('cam-status').textContent = text;
+}
+
+// Load model
+let landmarker;
+try {
+  const vision = await FilesetResolver.forVisionTasks(
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+  );
+  landmarker = await FaceLandmarker.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: '/blow/face_landmarker.task', delegate: 'GPU' },
+    runningMode: 'VIDEO',
+    numFaces: 1,
+  });
+} catch (err) {
+  setCamPstat('err', 'model failed');
+  throw err;
+}
+
+// Camera
+let vid;
+try {
+  vid = document.createElement('video');
+  vid.autoplay = true; vid.playsInline = true; vid.muted = true;
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  vid.srcObject = stream;
+  await new Promise(res => vid.onloadedmetadata = res);
+  await vid.play();
+} catch (err) {
+  setCamPstat('err', 'camera unavailable');
+  const btnCap = document.getElementById('btn-capture');
+  if (btnCap) { btnCap.disabled = true; btnCap.textContent = '📷 No camera'; }
+  throw err;
+}
+
+setCamPstat('ok', 'ready');
+
+let mpState = 'ready', consec = 0;
+
+// ── Canvas compositing helpers ─────────────────────────────────────
+
+function _slotDisplayH(slot, cW) {
+  const bm = slot.bitmap;
+  const w = slot.align === 'full' ? cW : Math.round(cW / 2);
+  return Math.round(bm.height * w / bm.width);
+}
+
+function _drawSlotBitmap(ctx, slot, cW, cH, anchor) {
+  const bm = slot.bitmap;
+  const dW = slot.align === 'full' ? cW : Math.round(cW / 2);
+  const dH = Math.round(bm.height * dW / bm.width);
+  let dX = 0;
+  if (slot.align === 'center') dX = Math.round((cW - dW) / 2);
+  else if (slot.align === 'right') dX = cW - dW;
+  ctx.drawImage(bm, dX, anchor === 'top' ? 0 : cH - dH, dW, dH);
+}
+
+function _coverCropMirror(ctx, src, srcW, srcH, dstX, dstY, dstW, dstH) {
+  if (dstW <= 0 || dstH <= 0) return;
+  const sc = Math.max(dstW / srcW, dstH / srcH);
+  const cropW = dstW / sc, cropH = dstH / sc;
+  const sx = (srcW - cropW) / 2, sy = (srcH - cropH) / 2;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(dstX, dstY, dstW, dstH); ctx.clip();
+  ctx.translate(dstX + dstW, 0); ctx.scale(-1, 1);
+  ctx.drawImage(src, sx, sy, cropW, cropH, 0, dstY, dstW, dstH);
+  ctx.restore();
+}
+
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (vid.readyState < 2) return;
+
+  const W = vid.videoWidth, H = vid.videoHeight;
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+
+  // Mirrored frame
+  ctx.save();
+  ctx.scale(-1, 1); ctx.translate(-W, 0);
+  ctx.drawImage(vid, 0, 0);
+  ctx.restore();
+
+  const result = landmarker.detectForVideo(vid, now);
+  const lms    = result.faceLandmarks;
+
+  if (lms && lms.length > 0) {
+    const lm  = lms[0];
+    const mw  = dist(lm[MOUTH_L], lm[MOUTH_R]);
+    const fw  = dist(lm[EYE_L],   lm[EYE_R]);
+    const nw  = fw > 0 ? mw / fw : 1.0;
+    const thr = window.btpThreshold ?? 0.50;
+
+    if (mpState === 'ready') {
+      consec = nw <= thr ? consec + 1 : 0;
+      if (consec >= MIN_FRAMES) {
+        mpState = 'blowing'; consec = 0;
+        fetch('/blow/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: 'mediapipe', ts: now / 1000 }),
+        });
+      }
+    } else if (nw > thr) {
+      mpState = 'ready'; consec = 0;
+    }
+
+    const blowing = mpState === 'blowing';
+    window.mpBlowing = blowing;
+    _updateCombBar();
+
+    const col = blowing ? '#22D3EE' : '#7C6FF7';
+
+    // Live nw bar in Camera panel
+    const nwPct = Math.min(100, (nw / 0.8) * 100);
+    document.getElementById('cam-nw-fill').style.width      = nwPct + '%';
+    document.getElementById('cam-nw-fill').style.background = col;
+    document.getElementById('cam-nw-thresh').style.left     = Math.min(96, (thr / 0.8) * 100) + '%';
+    document.getElementById('cam-nw-val').textContent       = nw.toFixed(3) + ' / ' + thr.toFixed(2);
+
+    // Mouth corners + eye corners
+    ctx.fillStyle = col;
+    for (const i of [MOUTH_L, MOUTH_R, EYE_L, EYE_R]) {
+      const p = lm[i];
+      ctx.beginPath();
+      ctx.arc((1 - p.x) * W, p.y * H, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Mouth line
+    const ml = lm[MOUTH_L], mr = lm[MOUTH_R];
+    ctx.beginPath();
+    ctx.moveTo((1 - ml.x) * W, ml.y * H);
+    ctx.lineTo((1 - mr.x) * W, mr.y * H);
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+
+    // Blow border on cam-preview
+    if (blowing) {
+      ctx.strokeStyle = '#22D3EE'; ctx.lineWidth = 5;
+      ctx.strokeRect(2, 2, W - 4, H - 4);
+    }
+  }
+
+  // ── Center canvas: camera cover-crop + overlays ──────────────────
+  {
+    const mainCanvas = document.getElementById('canvas');
+    const cW = mainCanvas.width, cH = mainCanvas.height;
+    const { header, footer, full } = window.customOverlays;
+
+    if (!window._rawCamCanvas || window._rawCamCanvas.width !== cW || window._rawCamCanvas.height !== cH) {
+      window._rawCamCanvas = Object.assign(document.createElement('canvas'), {width: cW, height: cH});
+    }
+    const cc = window._rawCamCanvas.getContext('2d');
+    cc.clearRect(0, 0, cW, cH);
+    _coverCropMirror(cc, vid, W, H, 0, 0, cW, cH);
+
+    const mc = mainCanvas.getContext('2d');
+    mc.clearRect(0, 0, cW, cH);
+    const bv = window.brightnessVal != null ? window.brightnessVal : 100;
+    const bFilter = 'brightness(' + (1 + bv / 100).toFixed(2) + ')';
+    const camImg = window.uiState === 'live' ? window._rawCamCanvas : window._capturedCameraImg;
+
+    if (camImg) {
+      mc.filter = bFilter;
+      mc.drawImage(camImg, 0, 0, cW, cH);
+      mc.filter = 'none';
+      if (full) mc.drawImage(full.bitmap, 0, 0, cW, cH);
+      else {
+        if (header) _drawSlotBitmap(mc, header, cW, cH, 'top');
+        if (footer) _drawSlotBitmap(mc, footer, cW, cH, 'bottom');
+      }
+    }
+  }
+
+  if (lms && lms.length > 0) {
+    setCamPstat(mpState === 'blowing' ? 'blow' : 'ok', mpState === 'blowing' ? 'blowing' : 'face detected');
+  } else {
+    mpState = 'ready'; consec = 0;
+    window.mpBlowing = false;
+    _updateCombBar();
+    setCamPstat('', 'no face');
+    document.getElementById('cam-nw-fill').style.width = '0%';
+    document.getElementById('cam-nw-val').textContent  = '—';
+  }
+}
+
+window._capturedCameraImg = null;
+window.freezeCamera = function() {
+  if (!window._rawCamCanvas) return;
+  const off = document.createElement('canvas');
+  off.width = window._rawCamCanvas.width;
+  off.height = window._rawCamCanvas.height;
+  off.getContext('2d').drawImage(window._rawCamCanvas, 0, 0);
+  window._capturedCameraImg = off;
+};
+
+requestAnimationFrame(tick);
+</script>
+
+</body>
+</html>

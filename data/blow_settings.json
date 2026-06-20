@@ -1,0 +1,5 @@
+{
+  "enabled": true,
+  "sensitivity": 0.48,
+  "arduino_threshold": 152
+}

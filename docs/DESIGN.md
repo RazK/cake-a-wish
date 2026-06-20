@@ -171,38 +171,43 @@ Click:     loads raw (pre-frame) image back into canvas for re-editing
 ## 3. Layout — /admin Page
 
 ### Page structure
+
+3-column holy grail layout, full viewport height, no scroll on the outer shell.
+
 ```
 [lavender gradient background, full viewport]
 
-┌─────────────────┬─────────────────────────────────────┐
-│  LEFT COLUMN    │  CANVAS AREA                        │
-│  (fixed width)  │  (flex: 1, fills remaining space)   │
-│                 │                                     │
-│  • header       │  canvas — centered, aspect ratio    │
-│  • template     │  determined by label_w × label_h    │
-│  • image ctrls  │  from GET /printer. No fixed ratio. │
-│  • action bar   │                                     │
-│  • gallery      │                                     │
-│  • settings     │                                     │
-│  • status bar   │                                     │
-└─────────────────┴─────────────────────────────────────┘
+┌──────────────────┬───────────────────────────┬──────────────────┐
+│  LEFT COLUMN     │  CENTER (canvas)           │  RIGHT COLUMN    │
+│  260px fixed     │  flex: 1                   │  260px fixed     │
+│  collapsible     │                            │  collapsible     │
+│                  │  canvas — centered         │                  │
+│  • Printer card  │  aspect ratio from         │  • Template card │
+│  • Camera card   │  label_w × label_h         │  • Photos card   │
+│  • Arduino card  │                            │                  │
+│  • Blow to Print │  action bar (below canvas) │                  │
+└──────────────────┴───────────────────────────┴──────────────────┘
+
+Header bar (52px, full width, above the 3 columns):
+  Left:   ⚙️ Hardware Settings  (section label, collapses left column)
+  Center: 🎂 Cake A Wish  (Handjet font, title)
+  Right:  🖼️ Photo Settings  (section label, collapses right column)
 ```
 
 ### Dimensions
 ```
-Left column:   300px fixed, full viewport height, overflow-y: auto
-               padding: 16px 14px
-               display: flex, flex-direction: column, gap: 10px
+Left/right columns:  260px fixed, full viewport height, overflow-y: auto
+                     padding: 12px 10px
+                     display: flex, flex-direction: column, gap: 8px
 
-Canvas area:   flex: 1, full viewport height
-               display: flex, align-items: center, justify-content: center
-               padding: 20px
+Center column:       flex: 1, full viewport height
+                     display: flex, flex-direction: column
+                     align-items: center, justify-content: center
+                     padding: 16px
 
 Canvas element:
   max-width:  100%
-  max-height: 100%
-  width: auto
-  height: auto
+  max-height: 65vh
   aspect ratio set by JS: canvas.width = label_w, canvas.height = label_h
   Fallback: 696 × 1044 (62red) until API responds
 
@@ -214,76 +219,60 @@ Canvas element:
 
 ### Left column contents (top to bottom)
 ```
-Header (not a card):
-  App title "🎂 Cake A Wish"
-  Printer status pill (right side of header row)
+Card — Printer:
+  Status pill (amber/green/red) with state text
+  Detail grid: connection type, IP, label ID, dimensions, model, errors
 
-Card — Template:
-  card-label: "TEMPLATE"
-  .tpl-list: flex row, gap 6px, 3 buttons: Clean / Bold / Retro
+Card — Camera:
+  #cam-preview canvas (4:3) — live MediaPipe feed + landmarks
+  Level bar + threshold marker
+  "Lip threshold" slider (20–80)
 
-Card — Image:
-  card-label: "IMAGE"
-  Row 1: Fit     [Contain | Cover | Stretch]
-  Row 2: Mirror  [Off | On]
-  Row 3: Rotate  [↻ 90° ghost-btn]
-  Row 4: Brightness  slider  value
+Card — Arduino:
+  Level bar + threshold marker
+  "Threshold" slider (1–200)
 
-Card — Action bar:
-  [Capture/Retake]  [⚡]  [📂]  [💾]  [Print]
-
-Card — Gallery:
-  card-label + note "last 8 · click to re-edit"
-  thumbnail strip
-
-Settings (collapsible <details>):
-  Printer IP input
-
-Status bar (no card, tiny text)
+Card — Blow to Print:
+  On/Off toggle pill  →  POST /blow/settings
+  Combined blow indicator bar with drain animation
 ```
 
-### Action bar card
+### Center column contents (top to bottom)
 ```
-Full 616px width, white card (radius 14px, border, shadow)
-Inside: flex row, gap 8px, align-items center
+Canvas (.label-frame wrapper):
+  White border box containing #canvas
+  Canvas info text below: "{label_id} · {label_w}×{label_h} px"
 
-[Capture / Retake]  [⚡]  [📂]  [💾]  [         Print         ]
-  .btn-outline        icon  icon  icon   .btn-primary
-  flex:1             40px  40px  40px   flex:2
+Action bar (white card, below canvas):
+  [Capture / Retake]  [⚡]  [📂]  [💾]  [Print]
+    .btn-outline        icon  icon  icon   .btn-primary
+    flex:1             40px  40px  40px   flex:2
 
-Capture button shows "Capture" in live mode, "Retake" in captured mode
-Print and 💾 disabled (opacity .35) until captured
+  Live mode:      [Capture] + [Quick Print]
+  Captured mode:  [Retake]  + [Print]
+  Countdown mode: [Cancel]  + [Print now]  + progress bar overlay
+
+Capture button shows "Capture" / "Retake" depending on state
+Print and 💾 disabled until captured
 ⚡ disabled until camera is ready
 ```
 
-### Gallery card
+### Right column contents (top to bottom)
 ```
-Full 616px width, white card
-Inside:
-  card-label row: "GALLERY" + note "last 8 · click to re-edit"
-  thumbnail strip: flex row, gap 8px, overflow-x auto, no scrollbar visible
-    Each item: 68×102px (see Gallery Item component)
-    Newest first (index 0 = leftmost)
-    Empty state: faint text "No prints yet"
-```
+Card — Template (rc-panel):
+  Full overlay slot:    load PNG, no alignment
+  Header overlay slot:  load PNG, alignment pill (full/left/center/right)
+  Footer overlay slot:  load PNG, alignment pill
+  [Save template] button
+  Saved templates gallery (2-column grid)
 
-### Settings
-```
-<details> element, full 616px width
-<summary>: "⚙ Settings"  — font 0.72rem 600, --sub
-  bg white, border 1px --border, radius 14px
-  when [open]: radius top-only (bottom corners become 0)
+Card — Photos (rc-panel):
+  Brightness slider (0–200, value 100)
+  [Save photo] button (disabled until captured)
+  Photos gallery (2-column grid, newest first)
 
-Body (shown when open):
-  white bg, border (no top border), radius bottom 14px
-  1 row: "Printer IP" label + text input (IP address, e.g. 192.168.1.139)
-```
-
-### Status bar
-```
-Below settings, full width
-Font: 0.7rem, color --muted (default)  .ok → --green  .err → --red
-Empty = invisible (min-height 1em to avoid layout jump)
+Status bar (below cards, tiny text):
+  Font: 0.7rem, color --muted (default)  .ok → --green  .err → --red
 ```
 
 ---
@@ -433,13 +422,11 @@ GET  /history
 
 ---
 
-## 7. Open Questions for Validation
+## 7. Resolved Design Decisions
 
-Before building:
-
-1. **Gallery hover action**: re-edit only (click loads raw back), or also show a separate Reprint button?
-2. **Template "None" option**: include a "no template" button in the picker, or always require one?
-3. **Canvas when no camera**: show placeholder text? or just show empty lavender-tinted canvas?
-4. **Settings password field**: PRODUCT.md mentions it — include it or skip for now?
-5. **Action bar as a card**: wireframe shows a box around buttons — confirm this is a white card with rounded corners, not just floating buttons?
-6. **Gallery as a card**: same question — white card wrapping the whole gallery section?
+1. **Gallery hover action**: click loads raw back into canvas (re-edit). Delete button visible on hover.
+2. **Template "None" option**: custom overlay slots (full/header/footer) serve as the flexible layer; 3 programmatic templates always available.
+3. **Canvas when no camera**: empty canvas (lavender bg shows through). Load button still works.
+4. **Settings password field**: omitted — printer IP is sufficient for current deployment.
+5. **Action bar as a card**: white card with rounded corners, below the canvas in the center column.
+6. **Gallery**: 2-column grid inside the Photos card in the right column (not a full-width strip).
