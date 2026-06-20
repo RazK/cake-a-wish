@@ -180,7 +180,7 @@ def shutdown():
 
 # ── Routes ────────────────────────────────────────────────────────
 
-_TASK_FILE = Path(__file__).parent / "blow_detection" / "face_landmarker.task"
+_TASK_FILE = Path(__file__).parent / "face_landmarker.task"
 
 
 @router.get("/blow/face_landmarker.task")

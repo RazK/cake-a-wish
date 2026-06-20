@@ -41,6 +41,10 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
+# Download the MediaPipe face landmarker model (~3.6MB, not in git)
+curl -Lo blow_detection/face_landmarker.task \
+  https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task
+
 uvicorn main:app --host 0.0.0.0 --port 8000
 # or: make dev
 ```

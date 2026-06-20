@@ -6,5 +6,6 @@ __pycache__/
 *.pyc
 memory/
 data/overlays/
+blow_detection/*.task
 data/photos.json
 data/saved_templates.json
