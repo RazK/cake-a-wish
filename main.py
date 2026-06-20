@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from PIL import Image
 from pydantic import BaseModel
 
-from blow_detection import router as blow_router
+from blow_detection.router import router as blow_router, startup as blow_startup, shutdown as blow_shutdown
 from label_printer.convertor import build_instructions, process_for_preview
 from label_printer.frames import REGISTRY
 from label_printer.printer import BrotherPrinter, BTBrotherPrinter
@@ -223,13 +223,13 @@ async def _monitor_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(_monitor_loop())
-    blow_router.startup()
+    blow_startup()
     yield
-    blow_router.shutdown()
+    blow_shutdown()
     task.cancel()
 
 app = FastAPI(lifespan=lifespan)
-app.include_router(blow_router.router)
+app.include_router(blow_router)
 _templates = Jinja2Templates(directory="templates")
 
 if os.path.isdir("static"):
