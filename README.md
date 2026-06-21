@@ -86,33 +86,6 @@ Browser opens at `http://localhost:8000` automatically.
 
 ---
 
-## Distributable build (no Python needed)
-
-You can build a standalone bundle for Mac or Windows that anyone can run without installing Python.
-
-```bash
-python build.py          # build for current platform
-python build.py --clean  # clean rebuild
-```
-
-Output in `dist/`:
-- **Mac** → `dist/CakeAWish.app` — double-click to launch
-- **Windows** → `dist/CakeAWish\CakeAWish.exe` — double-click to launch
-
-> **Note:** PyInstaller builds are platform-specific — build on Mac to get a `.app`, build on Windows to get a `.exe`. There are no pre-built binaries available for download yet.
-
-To share: zip the output folder and send it.
-
-```bash
-# Mac
-zip -r CakeAWish-mac.zip dist/CakeAWish.app
-
-# Windows (PowerShell)
-Compress-Archive dist\CakeAWish CakeAWish-win.zip
-```
-
----
-
 ## Printer
 
 The app auto-discovers the printer on your local network — no IP config needed. The status pill in the header shows the connection state. If both WiFi and USB are connected, you can switch between them with the WiFi / USB tabs in the Printer card.
@@ -173,40 +146,31 @@ Sketch is at `arduino/BlowDetector/BlowDetector.ino`. Flash it to any Arduino wi
 
 ---
 
-## Running on another machine (no Python required)
+## Distributable build (no Python needed)
 
-A pre-built bundle lets you hand a zip to anyone — no Python install needed.
-
-### Build (run once, on your machine)
+Build a standalone bundle that anyone can run without installing Python.
 
 ```bash
-python build.py          # installs pyinstaller and builds
-python build.py --clean  # full rebuild from scratch
+python build.py          # build for current platform
+python build.py --clean  # clean rebuild
 ```
 
-Output lives in `dist/`:
-- **Mac** → `dist/CakeAWish.app`  — double-click to launch
-- **Windows** → `dist/CakeAWish/CakeAWish.exe` — double-click to launch
+Output in `dist/`:
+- **Mac** → `dist/CakeAWish.app` — double-click to launch
+- **Windows** → `dist/CakeAWish\CakeAWish.exe` — double-click to launch
 
-The app starts a local server and opens `http://localhost:8000` in your default browser automatically.
+Builds are platform-specific — run on Mac to get `.app`, run on Windows to get `.exe`. Zip and share:
 
-### Distribute
-
-Zip the output and share it:
 ```bash
 # Mac
 zip -r CakeAWish-mac.zip dist/CakeAWish.app
 
-# Windows (run on a Windows machine after building there)
+# Windows (PowerShell)
 Compress-Archive dist\CakeAWish CakeAWish-win.zip
 ```
 
-### Notes
-
-- **WiFi printing** works out of the box on Mac and Windows.
-- **USB printing on Windows** requires [libusb](https://zadig.akeo.ie/) — run Zadig, select the Brother printer, install the WinUSB driver. USB printing on Mac works without any extras.
-- **Camera permissions** — macOS will prompt for camera access on first launch; grant it.
-- The `data/` folder (photos, settings) is created next to the executable, not inside the bundle.
+- **Camera permissions** — macOS will prompt on first launch; grant it.
+- The `data/` folder (photos, settings) is created next to the executable.
 
 ---
 
