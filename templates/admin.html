@@ -4,9 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cake A Wish — Admin</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Handjet:wght@100..900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="/static/fonts/fonts.css" rel="stylesheet">
   <style>
     /* ── Design Tokens ─────────────────────────────────────────── */
     :root {
@@ -1438,7 +1436,7 @@ _loadPhotos();
 
 <script type="module">
 import { FaceLandmarker, FilesetResolver }
-  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+  from "/static/mediapipe/vision_bundle.mjs";
 
 const MOUTH_L = 61, MOUTH_R = 291, EYE_L = 33, EYE_R = 263;
 const MIN_FRAMES = 3;
@@ -1458,7 +1456,7 @@ function setCamPstat(state, text) {
 let landmarker;
 try {
   const vision = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+    '/static/mediapipe/wasm'
   );
   landmarker = await FaceLandmarker.createFromOptions(vision, {
     baseOptions: { modelAssetPath: '/blow/face_landmarker.task', delegate: 'GPU' },

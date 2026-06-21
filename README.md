@@ -32,24 +32,23 @@ Staff run the app on a laptop on the same WiFi. Guests never touch anything — 
 
 ## Quick start
 
-**Requirements:** Python 3.11+, Brother QL-820NWBc on the network.
+**Requirements:** [Python 3.11+](https://www.python.org/downloads/)
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Download the MediaPipe face landmarker model (~3.6MB, not in git)
-curl -Lo blow_detection/face_landmarker.task \
-  https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task
-
-uvicorn main:app --host 0.0.0.0 --port 8000
-# or: make dev
+# Mac / Linux
+./setup.sh        # one-time setup — creates venv, installs deps, adds Desktop shortcut
+./run.sh          # start the app (or double-click the Desktop shortcut)
 ```
 
-Open `http://localhost:8000`.
+```bat
+:: Windows
+setup.bat         :: one-time setup — creates venv, installs deps, adds Desktop shortcut
+run.bat           :: start the app (or double-click the Desktop shortcut)
+```
 
-Set the printer IP in the Hardware Settings panel (default `10.140.224.9`). The status pill in the header turns green when the printer is reachable and a label is loaded.
+Browser opens at `http://localhost:8000` automatically. The `face_landmarker.task` model (~3.6 MB) is downloaded automatically on first run.
+
+The printer is auto-discovered on the local network — no IP config needed. Works on the same WiFi as the printer, or on the printer's WiFi Direct network (no internet required).
 
 ---
 
