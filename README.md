@@ -82,7 +82,7 @@ python launcher.py
 
 Browser opens at `http://localhost:8000` automatically.
 
-**USB printing on Windows** requires an extra driver step: install [Zadig](https://zadig.akeo.ie/), select the Brother printer, and install the WinUSB driver. WiFi printing works without this.
+**USB printing on Windows** works out of the box — `libusb-package` in requirements.txt bundles the necessary DLL automatically.
 
 ---
 

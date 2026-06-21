@@ -1,11 +1,24 @@
+import os
 import re
 import socket
+import sys
 import urllib.request
 from typing import Optional
 
 import serial
 from brother_ql.backends.helpers import send
 from brother_ql.reader import interpret_response
+
+# On Windows, add the libusb-package DLL directory so pyusb can find libusb-1.0.dll
+# without requiring the user to install Zadig or any system driver.
+if sys.platform == "win32":
+    try:
+        import libusb_package
+        _dll_dir = os.path.dirname(libusb_package.__file__)
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(_dll_dir)
+    except Exception:
+        pass
 
 _INVALIDATE     = bytes(200)
 _INITIALIZE     = bytes([0x1B, 0x40])
