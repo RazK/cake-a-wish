@@ -21,6 +21,11 @@ from label_printer.convertor import build_instructions, process_for_preview
 from label_printer.frames import REGISTRY
 from label_printer.printer import BrotherPrinter, BTBrotherPrinter, USBBrotherPrinter, find_usb_printer
 
+# ── Paths ────────────────────────────────────────────────────────────────────
+# When frozen by PyInstaller, CAKE_BASE_DIR points to sys._MEIPASS (bundled assets).
+# User-writable data lives next to the executable (CWD is set by launcher.py).
+_BASE_DIR = Path(os.environ["CAKE_BASE_DIR"]) if "CAKE_BASE_DIR" in os.environ else Path(__file__).parent
+
 # ── State ────────────────────────────────────────────────────────────────────
 
 _OVERLAY_DIR = Path("data") / "overlays"
@@ -161,9 +166,34 @@ def _wifi_reachable(ip: str) -> bool:
 
 _last_discovery: float = 0.0
 
+def _local_ips() -> list[str]:
+    """Return all non-loopback IPv4 addresses on this machine (cross-platform)."""
+    import subprocess, re, sys
+    try:
+        if sys.platform == "win32":
+            out = subprocess.check_output(["ipconfig"], text=True, stderr=subprocess.DEVNULL)
+            ips = re.findall(r'IPv4 Address[\s.]+:\s*(\d+\.\d+\.\d+\.\d+)', out)
+        else:
+            out = subprocess.check_output(["ifconfig"], text=True, stderr=subprocess.DEVNULL)
+            ips = re.findall(r'inet (\d+\.\d+\.\d+\.\d+)', out)
+        ips = [ip for ip in ips if not ip.startswith("127.")]
+        if ips:
+            return ips
+    except Exception:
+        pass
+    # fallback: single outbound interface
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        return [s.getsockname()[0]]
+    except Exception:
+        return []
+    finally:
+        s.close()
+
+
 async def _discover_wifi_printer() -> Optional[str]:
     """Scan all local /24 subnets concurrently for port 9100. Returns first IP found."""
-    import subprocess, re
 
     async def _probe(host: str) -> Optional[str]:
         try:
@@ -174,21 +204,13 @@ async def _discover_wifi_printer() -> Optional[str]:
         except Exception:
             return None
 
-    try:
-        # Collect all local IPv4 addresses from all interfaces
-        out = subprocess.check_output(["ifconfig"], text=True, stderr=subprocess.DEVNULL)
-        local_ips = [m for m in re.findall(r'inet (\d+\.\d+\.\d+\.\d+)', out)
-                     if not m.startswith("127.")]
-        if not local_ips:  # fallback: gateway-routed interface
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80)); local_ips = [s.getsockname()[0]]; s.close()
-
-        prefixes = list(dict.fromkeys(ip.rsplit(".", 1)[0] for ip in local_ips))
-        hosts = [f"{p}.{i}" for p in prefixes for i in range(1, 255)]
-        results = await asyncio.gather(*[_probe(h) for h in hosts])
-        return next((r for r in results if r), None)
-    except Exception:
+    local_ips = await asyncio.to_thread(_local_ips)
+    if not local_ips:
         return None
+    prefixes = list(dict.fromkeys(ip.rsplit(".", 1)[0] for ip in local_ips))
+    hosts = [f"{p}.{i}" for p in prefixes for i in range(1, 255)]
+    results = await asyncio.gather(*[_probe(h) for h in hosts])
+    return next((r for r in results if r), None)
 
 # ── Printer monitor ───────────────────────────────────────────────────────────
 
@@ -351,10 +373,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(blow_router)
-_templates = Jinja2Templates(directory="templates")
+_templates = Jinja2Templates(directory=str(_BASE_DIR / "templates"))
 
-if os.path.isdir("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+if (_BASE_DIR / "static").is_dir():
+    app.mount("/static", StaticFiles(directory=str(_BASE_DIR / "static")), name="static")
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
 

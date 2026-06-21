@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from pathlib import Path
 from typing import Dict
 
@@ -9,7 +10,11 @@ from .retro import RetroFrame
 
 _PROGRAMMATIC: list[FrameTemplate] = [CleanFrame(), BoldFrame(), RetroFrame()]
 
-_FRAMES_DIR = Path(__file__).parent
+_FRAMES_DIR = (
+    Path(os.environ["CAKE_BASE_DIR"]) / "label_printer" / "frames"
+    if "CAKE_BASE_DIR" in os.environ
+    else Path(__file__).parent
+)
 
 
 def _load_asset_templates() -> list[FrameTemplate]:

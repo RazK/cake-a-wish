@@ -30,26 +30,65 @@ Staff run the app on a laptop on the same WiFi. Guests never touch anything — 
 
 ---
 
-## Quick start
+## Setup — Mac / Linux
 
-**Requirements:** Python 3.11+, Brother QL-820NWBc on the network.
+**Requirements:** Python 3.11+
 
 ```bash
+git clone https://github.com/RazK/cake-a-wish.git
+cd cake-a-wish
+
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Download the MediaPipe face landmarker model (~3.6MB, not in git)
+# Download the MediaPipe face landmarker model (~3.6 MB, not in git)
 curl -Lo blow_detection/face_landmarker.task \
   https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task
 
-uvicorn main:app --host 0.0.0.0 --port 8000
-# or: make dev
+python launcher.py
 ```
 
-Open `http://localhost:8000`.
+Browser opens at `http://localhost:8000` automatically.
 
-Set the printer IP in the Hardware Settings panel (default `10.140.224.9`). The status pill in the header turns green when the printer is reachable and a label is loaded.
+---
+
+## Setup — Windows
+
+**Requirements:** [Python 3.11+](https://www.python.org/downloads/) — during install, tick **"Add python.exe to PATH"**.
+
+```bat
+git clone https://github.com/RazK/cake-a-wish.git
+cd cake-a-wish
+
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Download the MediaPipe model (run in PowerShell):
+
+```powershell
+Invoke-WebRequest `
+  -Uri "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task" `
+  -OutFile "blow_detection\face_landmarker.task"
+```
+
+Then start the app:
+
+```bat
+python launcher.py
+```
+
+Browser opens at `http://localhost:8000` automatically.
+
+**USB printing on Windows** works out of the box — `libusb-package` in requirements.txt bundles the necessary DLL automatically.
+
+---
+
+## Printer
+
+The app auto-discovers the printer on your local network — no IP config needed. The status pill in the header shows the connection state. If both WiFi and USB are connected, you can switch between them with the WiFi / USB tabs in the Printer card.
 
 ---
 
@@ -104,6 +143,34 @@ See [PRODUCT.md](docs/PRODUCT.md#6-template-system) for the full spec.
 ## Arduino
 
 Sketch is at `arduino/BlowDetector/BlowDetector.ino`. Flash it to any Arduino with an analog mic on A0. The server auto-detects the serial port on startup (looks for "arduino", "ch340", "cp210" in port names).
+
+---
+
+## Distributable build (no Python needed)
+
+Build a standalone bundle that anyone can run without installing Python.
+
+```bash
+python build.py          # build for current platform
+python build.py --clean  # clean rebuild
+```
+
+Output in `dist/`:
+- **Mac** → `dist/CakeAWish.app` — double-click to launch
+- **Windows** → `dist/CakeAWish\CakeAWish.exe` — double-click to launch
+
+Builds are platform-specific — run on Mac to get `.app`, run on Windows to get `.exe`. Zip and share:
+
+```bash
+# Mac
+zip -r CakeAWish-mac.zip dist/CakeAWish.app
+
+# Windows (PowerShell)
+Compress-Archive dist\CakeAWish CakeAWish-win.zip
+```
+
+- **Camera permissions** — macOS will prompt on first launch; grant it.
+- The `data/` folder (photos, settings) is created next to the executable.
 
 ---
 
