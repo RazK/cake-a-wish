@@ -4,6 +4,7 @@ import re
 import socket
 import sys
 import urllib.request
+import logging
 from typing import Optional
 
 from brother_ql.backends.helpers import discover, send
@@ -14,6 +15,9 @@ if sys.platform == "win32":
         import win32print as _win32print
     except ImportError:
         _win32print = None
+
+# Logger for printer connection helpers
+logger = logging.getLogger("printer.conn")
 
 # macOS refuses to let libusb detach its kernel driver (EACCES), but the
 # printer still works after claim_interface. Suppress only EACCES so the
@@ -37,6 +41,13 @@ _INVALIDATE     = bytes(200)
 _INITIALIZE     = bytes([0x1B, 0x40])
 _STATUS_REQUEST = bytes([0x1B, 0x69, 0x53])
 _BROTHER_KEYWORDS = ("brother", "ql-")
+
+# Win32 printer flags (used when win32print is available).
+# The spooler never sets PRINTER_STATUS_OFFLINE (0x80) for USB printers that are
+# physically unplugged — it only sets PRINTER_ATTRIBUTE_WORK_OFFLINE (0x400) in
+# the Attributes field.  We check both so either path is caught.
+PRINTER_STATUS_OFFLINE        = 0x00000080
+PRINTER_ATTRIBUTE_WORK_OFFLINE = 0x00000400
 
 
 def _parse_http_status(html: str) -> Optional[dict]:
@@ -87,9 +98,13 @@ def find_usb_printer() -> Optional[str]:
     if sys.platform == "win32":
         if _win32print is None:
             return None
+        names = []
         for _, _, name, _ in _win32print.EnumPrinters(_win32print.PRINTER_ENUM_LOCAL):
+            names.append(name)
             if any(kw in name.lower() for kw in _BROTHER_KEYWORDS):
+                logger.debug("find_usb_printer: found candidate printer '%s'", name)
                 return name
+        logger.debug("find_usb_printer: installed printers: %s", names)
         return None
     try:
         devices = discover('pyusb')
@@ -210,10 +225,27 @@ class WinUsbConnection:
     def query_status(self) -> dict:
         try:
             h = _win32print.OpenPrinter(self.printer_name)
-            _win32print.ClosePrinter(h)
-            return {"connected": True, "status": None}
         except Exception:
+            logger.debug("WinUsbConnection.query_status: OpenPrinter failed for '%s'", self.printer_name)
             return {"connected": False, "status": None}
+        try:
+            try:
+                info = _win32print.GetPrinter(h, 2)
+            except Exception:
+                info = {}
+            if not isinstance(info, dict):
+                info = {}
+            status = info.get('Status', 0)
+            attrs  = info.get('Attributes', 0)
+            logger.debug("WinUsbConnection.query_status: printer=%s status=%#x attrs=%#x port=%s",
+                         self.printer_name, status, attrs, info.get('pPortName'))
+            offline = (status & PRINTER_STATUS_OFFLINE) or (attrs & PRINTER_ATTRIBUTE_WORK_OFFLINE)
+            return {"connected": not offline, "status": None}
+        finally:
+            try:
+                _win32print.ClosePrinter(h)
+            except Exception:
+                pass
 
     def send_job(self, instructions: bytes) -> dict:
         try:
