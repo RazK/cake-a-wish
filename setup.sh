@@ -38,7 +38,17 @@ echo "Installing dependencies (this may take a minute)..."
 pip install -r requirements.txt -q
 echo "✓ Dependencies installed"
 
-# 4. Create desktop shortcut (macOS)
+# 4. Download face_landmarker.task if missing
+TASK_FILE="blow_detection/face_landmarker.task"
+TASK_URL="https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
+if [ ! -f "$TASK_FILE" ]; then
+  echo "Downloading face_landmarker.task (~3.6 MB)..."
+  curl -L -o "$TASK_FILE" "$TASK_URL" && echo "✓ face_landmarker.task downloaded" || echo "Warning: download failed — camera blow detection will be unavailable"
+else
+  echo "✓ face_landmarker.task already present"
+fi
+
+# 5. Create desktop shortcut (macOS)
 if [[ "$OSTYPE" == "darwin"* ]]; then
   SHORTCUT="$HOME/Desktop/Cake A Wish.command"
   cat > "$SHORTCUT" <<EOF
@@ -53,5 +63,5 @@ fi
 
 echo ""
 echo "=== Setup complete ==="
-echo "Double-click 'Cake A Wish.command' on your Desktop to start."
+echo "Double-click 'Cake A Wish.command' on your Desktop to start (macOS)."
 echo "Or run: ./run.sh"
