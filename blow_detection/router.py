@@ -143,13 +143,13 @@ def _broadcast(payload: dict):
 # ── Engine + Arduino (module-level singletons) ────────────────────
 
 _engine = BlowEngine(
-    on_blow=lambda source, ts, _: _broadcast(
-        {"event": "blow", "source": source, "ts": ts}
+    on_blow=lambda source, ts, will_print: _broadcast(
+        {"event": "blow", "source": source, "ts": ts, "will_print": will_print}
     ),
     on_cooldown=lambda remaining: _broadcast(
         {"event": "cooldown", "remaining": remaining}
     ),
-    blow_to_print=_settings["enabled"],
+    blow_to_print=True,
     cooldown=_settings.get("cooldown", 4.0),
     require_camera=_settings.get("require_camera", True),
     require_arduino=_settings.get("require_arduino", True),

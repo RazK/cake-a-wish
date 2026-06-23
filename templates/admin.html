@@ -303,13 +303,6 @@
     .pill.is-ok { border-color:var(--green);   color:var(--green); }
     .pill.is-on { border-color:var(--primary); color:var(--primary); }
 
-    /* ── Blow card layout ──────────────────────────────────────── */
-    .btp-body    { display:flex; flex-direction:column; gap:8px; }
-    .btp-row     { display:flex; align-items:center; gap:8px; }
-    .btp-section { display:flex; flex-direction:column; gap:5px; }
-    .btp-section-hd { font-size:0.6rem; font-weight:700; letter-spacing:.08em;
-                       text-transform:uppercase; color:var(--muted); }
-    .btp-divider { border:none; border-top:1px solid var(--border); margin:0; }
 
     /* blow indicator bars */
     .blow-row  { display:flex; align-items:center; gap:8px; }
@@ -348,6 +341,9 @@
                 color:var(--muted); transition:background .15s, color .15s, box-shadow .15s; }
     .tog-pill.is-on  .tog-opt.opt-on  { background:var(--green); color:#fff; box-shadow:0 1px 4px rgba(44,38,64,.15); }
     .tog-pill.is-off .tog-opt.opt-off { background:var(--surface);  color:var(--text); box-shadow:0 1px 4px rgba(44,38,64,.12); }
+
+    #btp-req-camera.is-on .tog-opt.opt-on { background:var(--cyan); }
+    #btp-req-arduino.is-on .tog-opt.opt-on { background:var(--green); }
     .pstat      { display:flex; align-items:center; gap:4px; margin-bottom:8px; }
     .pstat-dot  { width:7px; height:7px; border-radius:50%; background:var(--muted);
                   flex-shrink:0; transition:background .3s; }
@@ -541,36 +537,35 @@
       <div class="card">
         <div class="card-head" style="margin-bottom:0">
           <div class="card-label" style="margin-bottom:0">Blow to Print</div>
-          <div class="tog-pill is-off" id="btp-toggle" onclick="btpSetEnabled(!this.classList.contains('is-on'))">
-            <span class="tog-opt opt-on">On</span>
-            <span class="tog-opt opt-off">Off</span>
+          <div class="pstat" id="btp-pstat">
+            <span class="pstat-text" id="btp-pstat-text">Camera + Arduino</span>
+            <span class="pstat-dot" id="btp-pstat-dot" style="background:var(--primary)"></span>
           </div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
-          <span style="font-size:0.65rem;color:var(--muted)">Require Camera</span>
+          <span style="font-size:0.65rem;color:var(--cyan)">Require Camera</span>
           <div class="tog-pill is-on" id="btp-req-camera" onclick="btpSetRequire('camera', !this.classList.contains('is-on'))">
             <span class="tog-opt opt-on">On</span>
             <span class="tog-opt opt-off">Off</span>
           </div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
-          <span style="font-size:0.65rem;color:var(--muted)">Require Arduino</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+          <span style="font-size:0.65rem;color:var(--green)">Require Arduino</span>
           <div class="tog-pill is-on" id="btp-req-arduino" onclick="btpSetRequire('arduino', !this.classList.contains('is-on'))">
             <span class="tog-opt opt-on">On</span>
             <span class="tog-opt opt-off">Off</span>
           </div>
         </div>
-        <div style="font-size:0.65rem;color:var(--muted);margin-top:6px;text-align:right" id="btp-mode-label">Camera + Arduino</div>
-        <div class="ctrl-row" style="margin-top:10px">
-          <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">cooldown</span>
-          <input type="range" id="btp-cooldown" min="1" max="10" step="1" value="4" style="accent-color:var(--amber)">
-        </div>
-        <div style="font-size:0.65rem;color:var(--muted);margin-top:2px;text-align:right" id="btp-cooldown-val">4s</div>
-        <div class="level-track" style="margin-top:6px">
+        <div class="level-track" style="margin-top:10px">
           <div class="level-fill"   id="btp-cooldown-fill"   style="background:var(--amber);width:0%;transition:width 0.12s linear"></div>
           <div class="level-thresh" id="btp-cooldown-thresh" style="left:40%"></div>
         </div>
         <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="btp-cooldown-remaining">Ready</div>
+        <div class="ctrl-row" style="margin-top:6px">
+          <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">cooldown</span>
+          <input type="range" id="btp-cooldown" min="1" max="10" step="1" value="4" style="accent-color:var(--amber)">
+        </div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:2px;text-align:right" id="btp-cooldown-val">4s</div>
       </div>
 
       </div><!-- .col-body -->
@@ -703,8 +698,6 @@ window.ardBlowing    = false;
 window.mpBlowing     = false;
 window.uiState       = 'live';
 window.brightnessVal = 100;
-let _btpEnabled        = false;
-let _btpUserSet        = false;  // true once user has manually toggled
 let _brightnessVal     = 100;
 let _countdownTimer    = null;
 let _cooldownVal       = 4.0;    // seconds, synced from server
@@ -712,26 +705,6 @@ let _requireCamera     = true;
 let _requireArduino    = true;
 
 // ── Blow to Print ─────────────────────────────────────────────────
-
-function btpSetEnabled(on) {
-  _btpUserSet = true;
-  fetch('/blow/settings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled: on }),
-  });
-  _btpApplyEnabled(on);
-}
-
-function _btpApplyEnabled(on) {
-  _btpEnabled = on;
-  document.getElementById('btp-toggle').className = 'tog-pill ' + (on ? 'is-on' : 'is-off');
-}
-
-function _btpSyncFromServer(on) {
-  // Only sync from server heartbeat before user has manually toggled
-  if (!_btpUserSet) _btpApplyEnabled(on);
-}
 
 function btpSetRequire(sensor, on) {
   if (sensor === 'camera') _requireCamera = on;
@@ -746,12 +719,13 @@ function btpSetRequire(sensor, on) {
 }
 
 function _updateModeLabel() {
-  let text;
-  if (_requireCamera && _requireArduino)  text = 'Camera + Arduino';
-  else if (_requireCamera)               text = 'Camera only';
-  else if (_requireArduino)              text = 'Arduino only';
-  else                                   text = 'Manual only';
-  document.getElementById('btp-mode-label').textContent = text;
+  let text, color;
+  if (_requireCamera && _requireArduino) { text = 'Camera + Arduino'; color = 'var(--primary)'; }
+  else if (_requireCamera)               { text = 'Camera only';       color = 'var(--cyan)'; }
+  else if (_requireArduino)              { text = 'Arduino only';      color = 'var(--green)'; }
+  else                                   { text = 'Manual only';       color = 'var(--muted)'; }
+  document.getElementById('btp-pstat-text').textContent = text;
+  document.getElementById('btp-pstat-dot').style.background = color;
 }
 
 function _updateCombBar() {
@@ -815,9 +789,20 @@ _cooldownEl.addEventListener('change', () => {
   });
 });
 
+let _cooldownPrevRemaining = 0;
 function _applyCooldownRemaining(remaining) {
   const pct = Math.max(0, (remaining / 10) * 100);
-  document.getElementById('btp-cooldown-fill').style.width = pct + '%';
+  const fill = document.getElementById('btp-cooldown-fill');
+  if (_cooldownPrevRemaining === 0 && remaining > 0) {
+    // Initial fill: snap to position instantly, then re-enable drain animation
+    fill.style.transition = 'none';
+    fill.style.width = pct + '%';
+    void fill.offsetWidth; // force reflow so the snap commits before transition is restored
+    fill.style.transition = 'width 0.12s linear';
+  } else {
+    fill.style.width = pct + '%';
+  }
+  _cooldownPrevRemaining = remaining;
   document.getElementById('btp-cooldown-remaining').textContent =
     remaining > 0 ? remaining.toFixed(1) + 's' : 'Ready';
 }
@@ -1021,7 +1006,7 @@ _sse.onmessage = e => {
   }
 
   if (d.event === 'blow') {
-    if (d.will_print && window.uiState === 'live' && _btpEnabled) startCountdown();
+    if (d.will_print && window.uiState === 'live') startCountdown();
     return;
   }
 
@@ -1048,7 +1033,6 @@ _sse.onmessage = e => {
     document.getElementById('ard-pstat').className   = 'pstat ' + (ok ? 'ok' : '');
     document.getElementById('ard-status-text').textContent = ok ? 'connected' : 'disconnected';
   }
-  if (d.enabled     !== undefined) _btpSyncFromServer(d.enabled);
   if (d.sensitivity !== undefined) {
     _sensEl.value = Math.round(d.sensitivity * 100);
     window.btpThreshold = d.sensitivity;
