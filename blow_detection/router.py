@@ -18,7 +18,7 @@ import serial
 import serial.tools.list_ports
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from blow_detection.engine import BlowEngine
 
@@ -33,12 +33,12 @@ _settings_lock = threading.Lock()
 
 
 def _load_settings() -> dict:
-    defaults = {"enabled": False, "sensitivity": 0.5, "arduino_threshold": None, "cooldown": 4.0, "require_camera": True, "require_arduino": True, "sensor_gap": 1.0}
+    defaults = {"sensitivity": 0.5, "arduino_threshold": None, "cooldown": 4.0, "require_camera": True, "require_arduino": True, "sensor_gap": 1.0}
     if SETTINGS_PATH.exists():
         try:
             return {**defaults, **json.loads(SETTINGS_PATH.read_text())}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to load settings, using defaults: {e}")
     return defaults
 
 
@@ -217,7 +217,6 @@ async def blow_stream(request: Request):
     async def generate():
         with _settings_lock:
             init = {
-                "enabled":           _settings["enabled"],
                 "sensitivity":       _settings["sensitivity"],
                 "arduino_threshold": _settings["arduino_threshold"],
                 "cooldown":          _settings.get("cooldown", 4.0),
@@ -248,21 +247,17 @@ async def blow_stream(request: Request):
 
 
 class _BlowSettings(BaseModel):
-    enabled: Optional[bool] = None
-    sensitivity: Optional[float] = None
-    arduino_threshold: Optional[int] = None
-    cooldown: Optional[float] = None
-    require_camera: Optional[bool] = None
-    require_arduino: Optional[bool] = None
-    sensor_gap: Optional[float] = None
+    sensitivity:       Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    arduino_threshold: Optional[int]   = Field(default=None, ge=1, le=1023)
+    cooldown:          Optional[float] = Field(default=None, ge=1.0, le=30.0)
+    require_camera:    Optional[bool]  = None
+    require_arduino:   Optional[bool]  = None
+    sensor_gap:        Optional[float] = Field(default=None, ge=0.1, le=10.0)
 
 
 @router.post("/blow/settings")
 async def blow_settings(body: _BlowSettings):
     with _settings_lock:
-        if body.enabled is not None:
-            _settings["enabled"] = body.enabled
-            _engine.blow_to_print = body.enabled
         if body.sensitivity is not None:
             _settings["sensitivity"] = body.sensitivity
         if body.arduino_threshold is not None:
@@ -279,5 +274,6 @@ async def blow_settings(body: _BlowSettings):
         if body.sensor_gap is not None:
             _settings["sensor_gap"] = body.sensor_gap
             _engine.sensor_gap = body.sensor_gap
-        _save_settings(_settings)
+        snapshot = dict(_settings)
+    _save_settings(snapshot)
     return {"ok": True}

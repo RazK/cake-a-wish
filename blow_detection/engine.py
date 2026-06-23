@@ -1,8 +1,9 @@
 """Blow detection engine — fuses Arduino + MediaPipe signals.
 
-Either signal alone is sufficient to trigger a blow event.
-Fires a callback with source ('arduino' | 'mediapipe') and timestamp.
-Tracks whether 'blow_to_print' is enabled; if not, fires 'would_print' instead.
+Require flags (require_camera, require_arduino) control which sensors must agree.
+Both required: both must fire within sensor_gap seconds of each other.
+One required: only that source triggers a print.
+Neither: engine detects blows but never prints (manual-only mode).
 Enforces a cooldown period after each print fires.
 """
 
@@ -145,13 +146,13 @@ class BlowEngine:
         with self._lock:
             last_print = self._last_print_ts
             cooldown = self._cooldown
-        if last_print == 0.0:
-            return
-        now = time.time()
-        if now - self._last_cooldown_broadcast < 0.05:
-            return
+            if last_print == 0.0:
+                return
+            now = time.time()
+            if now - self._last_cooldown_broadcast < 0.05:
+                return
+            self._last_cooldown_broadcast = now
         remaining = max(0.0, cooldown - (now - last_print))
-        self._last_cooldown_broadcast = now
         try:
             self._on_cooldown(round(remaining, 2))
         except Exception as e:

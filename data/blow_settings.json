@@ -1,5 +1,4 @@
 {
-  "enabled": true,
   "sensitivity": 0.47,
   "arduino_threshold": 176,
   "cooldown": 4.0,
