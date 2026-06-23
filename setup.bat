@@ -1,6 +1,6 @@
 @echo off
 :: One-time setup for Cake A Wish on Windows.
-:: Run this once; after that, double-click run.bat or the Desktop shortcut.
+:: Run this once; after that, the app starts automatically on boot.
 :: Pass --force as first argument to redo all steps.
 
 cd /d "%~dp0"
@@ -28,19 +28,17 @@ for /f "tokens=1,2 delims=." %%a in ("%PY_VERSION%") do (
 )
 if %PY_MAJOR% LSS 3 (
     echo Error: Python 3.11+ required ^(found %PY_VERSION%^).
-    echo Install it from https://www.python.org/downloads/ then run this script again.
     pause
     exit /b 1
 )
 if %PY_MAJOR% EQU 3 if %PY_MINOR% LSS 11 (
     echo Error: Python 3.11+ required ^(found %PY_VERSION%^).
-    echo Install it from https://www.python.org/downloads/ then run this script again.
     pause
     exit /b 1
 )
-echo Python %PY_VERSION%
+echo Python %PY_VERSION% OK
 
-:: 2. Create virtual environment (skip if exists)
+:: 2. Create virtual environment
 if not exist ".venv" (
     echo Creating virtual environment...
     python -m venv .venv
@@ -52,7 +50,7 @@ if not exist ".venv" (
 call .venv\Scripts\activate
 echo Virtual environment ready
 
-:: 3. Install dependencies (skip if already installed)
+:: 3. Install dependencies
 if "%FORCE%"=="1" goto install_deps
 python -c "import uvicorn, fastapi, PIL, brother_ql, serial" >nul 2>&1
 if errorlevel 1 goto install_deps
@@ -81,23 +79,46 @@ if errorlevel 1 (
 )
 :task_done
 
-:: 5. Create Desktop shortcut (skip if exists)
-set SHORTCUT=%USERPROFILE%\Desktop\Cake A Wish.bat
-if exist "%SHORTCUT%" if not "%FORCE%"=="1" (
+:: 5. Create logs directory
+if not exist "logs" mkdir logs
+
+:: 6. Create Desktop shortcut (.lnk via PowerShell — no terminal window)
+set PYTHONW=%SCRIPT_DIR%.venv\Scripts\pythonw.exe
+set DESKTOP_LNK=%USERPROFILE%\Desktop\Cake A Wish.lnk
+if exist "%DESKTOP_LNK%" if not "%FORCE%"=="1" (
     echo Desktop shortcut already exists
-    goto shortcut_done
+    goto desktop_done
 )
-(
-  echo @echo off
-  echo cd /d "%SCRIPT_DIR%"
-  echo call .venv\Scripts\activate
-  echo python launcher.py
-) > "%SHORTCUT%"
-echo Desktop shortcut created: %SHORTCUT%
-:shortcut_done
+powershell -NoProfile -Command ^
+  "$ws = New-Object -ComObject WScript.Shell;" ^
+  "$s  = $ws.CreateShortcut('%DESKTOP_LNK%');" ^
+  "$s.TargetPath      = '%PYTHONW%';" ^
+  "$s.Arguments       = 'launcher.py';" ^
+  "$s.WorkingDirectory = '%SCRIPT_DIR%';" ^
+  "$s.WindowStyle     = 7;" ^
+  "$s.Save()"
+echo Desktop shortcut created
+:desktop_done
+
+:: 7. Register in Windows Startup folder (auto-run on boot)
+set STARTUP_LNK=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Cake A Wish.lnk
+if exist "%STARTUP_LNK%" if not "%FORCE%"=="1" (
+    echo Startup entry already registered
+    goto startup_done
+)
+powershell -NoProfile -Command ^
+  "$ws = New-Object -ComObject WScript.Shell;" ^
+  "$s  = $ws.CreateShortcut('%STARTUP_LNK%');" ^
+  "$s.TargetPath      = '%PYTHONW%';" ^
+  "$s.Arguments       = 'launcher.py';" ^
+  "$s.WorkingDirectory = '%SCRIPT_DIR%';" ^
+  "$s.WindowStyle     = 7;" ^
+  "$s.Save()"
+echo Startup entry registered — app will launch automatically on boot
+:startup_done
 
 echo.
 echo === Setup complete ===
-echo Double-click "Cake A Wish" on your Desktop to start.
-echo Or run: run.bat
+echo The app will start automatically when the laptop boots.
+echo Double-click "Cake A Wish" on the Desktop to start it now.
 pause
