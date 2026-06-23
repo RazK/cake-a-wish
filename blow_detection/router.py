@@ -108,6 +108,8 @@ class ArduinoReader:
                 while self._running:
                     raw = ser.readline().decode("utf-8", errors="replace").strip()
                     if not raw:
+                        if not _find_arduino_port():
+                            break
                         continue
                     if raw.startswith("LEVEL,"):
                         parts = raw.split(",")
