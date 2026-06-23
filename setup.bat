@@ -101,6 +101,7 @@ powershell -NoProfile -Command ^
   "$s.TargetPath      = '%PYTHONW%';" ^
   "$s.Arguments       = 'launcher.py';" ^
   "$s.WorkingDirectory = '%SCRIPT_DIR%';" ^
+  "$s.IconLocation    = '%SCRIPT_DIR%static\favicon.ico,0';" ^
   "$s.WindowStyle     = 7;" ^
   "$s.Save()"
 echo Desktop shortcut created
@@ -118,6 +119,7 @@ powershell -NoProfile -Command ^
   "$s.TargetPath      = '%PYTHONW%';" ^
   "$s.Arguments       = 'launcher.py';" ^
   "$s.WorkingDirectory = '%SCRIPT_DIR%';" ^
+  "$s.IconLocation    = '%SCRIPT_DIR%static\favicon.ico,0';" ^
   "$s.WindowStyle     = 7;" ^
   "$s.Save()"
 echo Startup entry registered — app will launch automatically on boot
