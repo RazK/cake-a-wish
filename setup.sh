@@ -1,7 +1,13 @@
 #!/bin/bash
 # One-time setup for Cake A Wish on Mac/Linux.
 # Run this once; after that, use run.sh to start the app.
+# Use --force to redo all steps even if already complete.
 set -e
+
+FORCE=0
+if [[ "$1" == "--force" ]]; then
+  FORCE=1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -26,7 +32,7 @@ fi
 echo "✓ Python $PY_VERSION"
 
 # 2. Create virtual environment
-if [ ! -d ".venv" ]; then
+if [ ! -d ".venv" ] || [ "$FORCE" -eq 1 ]; then
   echo "Creating virtual environment..."
   python3 -m venv .venv
 fi
@@ -34,7 +40,7 @@ source .venv/bin/activate
 echo "✓ Virtual environment ready"
 
 # 3. Install dependencies (skip if already installed)
-if ! python3 -c "import uvicorn, fastapi, PIL, brother_ql, serial" &>/dev/null; then
+if [ "$FORCE" -eq 1 ] || ! python3 -c "import uvicorn, fastapi, PIL, brother_ql, serial" &>/dev/null; then
   echo "Installing dependencies (this may take a minute)..."
   pip install -r requirements.txt -q
   echo "✓ Dependencies installed"
@@ -45,7 +51,7 @@ fi
 # 4. Download face_landmarker.task if missing
 TASK_FILE="blow_detection/face_landmarker.task"
 TASK_URL="https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
-if [ ! -f "$TASK_FILE" ]; then
+if [ ! -f "$TASK_FILE" ] || [ "$FORCE" -eq 1 ]; then
   echo "Downloading face_landmarker.task (~3.6 MB)..."
   curl -L -o "$TASK_FILE" "$TASK_URL" && echo "✓ face_landmarker.task downloaded" || echo "Warning: download failed — camera blow detection will be unavailable"
 else
@@ -55,7 +61,7 @@ fi
 # 5. Create desktop shortcut (macOS, skip if already exists)
 if [[ "$OSTYPE" == "darwin"* ]]; then
   SHORTCUT="$HOME/Desktop/Cake A Wish.command"
-  if [ ! -f "$SHORTCUT" ]; then
+  if [ ! -f "$SHORTCUT" ] || [ "$FORCE" -eq 1 ]; then
     cat > "$SHORTCUT" <<EOF
 #!/bin/bash
 cd "$SCRIPT_DIR"
