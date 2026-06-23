@@ -36,7 +36,7 @@
       font-family: 'JetBrains Mono', monospace;
       font-size: 13px;
       color: var(--text);
-      background: linear-gradient(150deg, var(--bg-from), var(--bg-to)) fixed;
+      background: linear-gradient(135deg, #DCEAFB 0%, #E7EDFB 45%, #EFE7FB 75%, #F4E9FB 100%) fixed;
       display: flex;
       flex-direction: column;
     }
@@ -139,56 +139,145 @@
     }
     .col-body::-webkit-scrollbar { display: none; }
 
-    /* ── Canvas area (center column) ───────────────────────────── */
-    .canvas-area {
+    /* ── Stage (center column — kiosk view) ────────────────────── */
+    .stage {
       flex: 1;
-      display: flex;
-      flex-direction: column;
+      position: relative;
       overflow: hidden;
-      padding: 20px 20px 16px;
-      gap: 10px;
-    }
-
-    .canvas-wrap {
-      flex: 1;
-      min-height: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 8px;
-      overflow: hidden;
-      padding: 16px 0;
+      justify-content: flex-start;
+      --kiosk-gap: clamp(16px, 4vh, 48px);
+      padding-top: var(--kiosk-gap);
+      padding-bottom: 16px;
     }
 
-    .label-frame {
+    /* Title image at top */
+    .stage-title {
       flex-shrink: 0;
-      max-height: 65%;
+      width: min(680px, 70%);
+      height: auto;
+      transition: opacity .5s ease;
+    }
+
+    /* Balanced row: [ arrow side | polaroid | empty side ] */
+    .frame-row {
+      width: 100%;
+      margin-top: var(--kiosk-gap);
       display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      min-height: 0;
+    }
+    .frame-side {
+      flex: 1 1 0;
+      min-width: 0;
+      align-self: stretch;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Arrow / candle image in the left gap */
+    .candle {
+      width: min(60%, 280px);
+      height: auto;
+      transition: opacity .5s ease;
+      pointer-events: none;
+      filter: drop-shadow(0 8px 18px rgba(80,70,140,.14));
+    }
+
+    /* Polaroid frame wrapping canvas */
+    .polaroid {
+      position: relative;
+      z-index: 2;
       background: #fff;
-      border-radius: 10px;
-      box-shadow: 0 6px 32px rgba(44, 38, 64, .22);
-      padding: 8px 6px;
+      border-radius: 16px;
+      box-shadow: 0 18px 50px rgba(60,50,110,.22);
+      padding: 14px 16px 20px;
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      transition: transform 1.25s cubic-bezier(.55,.1,.6,1);
+      will-change: transform;
+    }
+    .polaroid.printing { transform: translateY(125vh); }
+
+    .label-frame {
+      position: relative;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      display: block;
+    }
+
+    .cam-placeholder {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      color: #9a96a6;
+      background: #fff;
+      text-align: center;
     }
 
     #canvas {
       display: block;
-      max-width: 100%;
-      max-height: 100%;
-      min-height: 0;
+      max-width: min(42vw, 38vh);
+      max-height: 46vh;
       width: auto;
       height: auto;
-      border-radius: 3px;
+      border-radius: 8px;
+      position: relative;
+      z-index: 1;
       image-rendering: pixelated;
     }
 
-    .canvas-info {
-      flex-shrink: 0;
-      text-align: center;
-      font-size: 0.7rem;
-      color: var(--sub);
-      letter-spacing: 0.02em;
+
+    .canvas-info { display: none; }
+
+    /* Result text image — screen 3, centered over stage */
+    .result-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: min(800px, 78%);
+      height: auto;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .6s ease;
+      z-index: 10;
     }
+    .result-text.show { opacity: 1; }
+
+    /* White trigger circle — temporary breath-sensor bridge */
+    .trigger-circle {
+      position: absolute;
+      bottom: clamp(10px, 2vh, 20px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+      box-shadow: 0 6px 20px rgba(60,50,110,.25);
+      cursor: pointer;
+      z-index: 5;
+      transition: transform .12s ease, box-shadow .12s ease, opacity .35s ease;
+    }
+    .trigger-circle:hover  { box-shadow: 0 8px 26px rgba(60,50,110,.32); }
+    .trigger-circle:active { transform: translateX(-50%) scale(.92); }
+    .trigger-circle.hidden { opacity: 0; pointer-events: none; }
+
+    /* Helper for kiosk fade-out */
+    .kiosk-fade { opacity: 0 !important; }
 
     /* ── Action bar (center, below canvas) ─────────────────────── */
     .action-bar {
@@ -217,6 +306,22 @@
     }
     #bar-live, #bar-captured, #bar-countdown { position: relative; z-index: 1; }
     @keyframes cd-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+    /* ── Flash overlay (capture transition) ────────────────────── */
+    #flash {
+      position: fixed;
+      inset: 0;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 200;
+    }
+    #flash.fire { animation: flash-anim .42s ease-out forwards; }
+    @keyframes flash-anim {
+      0%   { opacity: 0; }
+      12%  { opacity: .95; }
+      100% { opacity: 0; }
+    }
 
     /* ── Card ──────────────────────────────────────────────────── */
     .card {
@@ -451,6 +556,9 @@
 </head>
 <body>
 
+  <!-- Flash overlay (fires on capture) -->
+  <div id="flash"></div>
+
   <!-- Top bar: always-visible column headers + app title -->
   <div class="top-bar">
     <div class="col-head left-col-head" id="left-col-head" onclick="toggleCol('left')">
@@ -471,7 +579,7 @@
   <div class="body-row">
 
     <!-- Left — Hardware (foldable) -->
-    <div class="left-col" id="left-col">
+    <div class="left-col collapsed" id="left-col">
       <div class="col-body">
 
       <!-- Printer -->
@@ -582,17 +690,37 @@
       </div><!-- .col-body -->
     </div><!-- .left-col -->
 
-    <!-- Center — canvas + action bar -->
-    <div class="canvas-area">
+    <!-- Center — kiosk stage -->
+    <div class="stage" id="stage">
 
-      <div class="canvas-wrap">
-        <div class="label-frame">
-          <canvas id="canvas" width="696" height="1044"></canvas>
+      <!-- Screen 1: title -->
+      <img class="stage-title" id="stage-title" src="/static/Title.png" alt="Cake A Wish">
+
+      <!-- Balanced row: arrow | polaroid | empty -->
+      <div class="frame-row">
+        <div class="frame-side">
+          <img class="candle" id="candle" src="/static/Arrow.png" alt="">
         </div>
-        <div class="canvas-info" id="canvas-info">62red · 696 × 1044 px</div>
+
+        <!-- Polaroid frame (live camera → frozen photo) -->
+        <div class="polaroid" id="polaroid">
+          <div class="label-frame">
+            <div class="cam-placeholder" id="cam-placeholder">Camera loading…</div>
+            <canvas id="canvas" width="696" height="1044"></canvas>
+          </div>
+        </div>
+
+        <div class="frame-side" aria-hidden="true"></div>
       </div>
 
-      <div class="card action-bar">
+      <!-- Screen 3: result text (hidden until print completes) -->
+      <img class="result-text" id="result-text" src="/static/result-text.png" alt="">
+
+      <!-- White trigger circle — remove once breath sensor is wired -->
+      <button class="trigger-circle" id="trigger-circle" aria-label="Simulate blow" onclick="kioskTrigger()"></button>
+
+      <!-- Action bar -->
+      <div class="card action-bar" style="margin-top:12px;position:relative;z-index:3">
         <div id="cd-progress"></div>
         <div id="bar-live">
           <button class="btn btn-outline" id="btn-capture" onclick="doCapture()">📷 Capture</button>
@@ -608,10 +736,13 @@
         </div>
       </div>
 
-    </div><!-- .canvas-area -->
+      <!-- canvas-info kept hidden for JS compatibility -->
+      <div class="canvas-info" id="canvas-info" style="display:none">62red · 696 × 1044 px</div>
+
+    </div><!-- .stage -->
 
     <!-- Right — Photo (foldable) -->
-    <div class="right-col" id="right-col">
+    <div class="right-col collapsed" id="right-col">
       <div class="col-body">
 
       <!-- ── Template card ── -->
@@ -667,6 +798,22 @@
           </div>
         </div>
 
+        <div class="tmpl-divider"></div>
+
+        <!-- Print margins -->
+        <div style="padding:6px 0 2px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+            <span class="col-label">Left margin</span>
+            <span id="margin-left-val" style="font-size:11px;color:var(--muted)">0 px</span>
+          </div>
+          <input type="range" id="margin-left-slider" min="0" max="200" value="0" style="width:100%" oninput="window.printMarginLeft=parseInt(this.value);document.getElementById('margin-left-val').textContent=this.value+' px'">
+          <div style="display:flex;justify-content:space-between;margin-top:8px;margin-bottom:2px">
+            <span class="col-label">Right margin</span>
+            <span id="margin-right-val" style="font-size:11px;color:var(--muted)">0 px</span>
+          </div>
+          <input type="range" id="margin-right-slider" min="0" max="200" value="0" style="width:100%;transform:scaleX(-1)" oninput="window.printMarginRight=parseInt(this.value);document.getElementById('margin-right-val').textContent=this.value+' px'">
+        </div>
+
         <button class="btn btn-outline" style="width:100%;margin-top:10px" onclick="saveTemplate()">💾 Save template</button>
 
         <div class="gallery-grid" id="tmpl-gallery">
@@ -679,7 +826,7 @@
         <div class="card-label">Photos</div>
         <div class="ctrl-row">
           <span class="ctrl-lbl">Brightness</span>
-          <input type="range" id="brightness-slider" min="0" max="200" value="100">
+          <input type="range" id="brightness-slider" min="0" max="200" value="40">
           <span class="ctrl-val" id="brightness-val">0</span>
         </div>
         <button class="btn btn-outline" id="save-photo-btn" style="width:100%;margin-top:8px" onclick="savePhoto()" disabled>💾 Save photo</button>
@@ -708,8 +855,10 @@ function toggleCol(side) {
 window.ardBlowing    = false;
 window.mpBlowing     = false;
 window.uiState       = 'live';
-window.brightnessVal = 100;
-let _brightnessVal     = 100;
+window.brightnessVal    = 40;
+window.printMarginLeft  = 0;
+window.printMarginRight = 0;
+let _brightnessVal       = 40;
 let _countdownTimer    = null;
 let _cooldownVal       = 4.0;    // seconds, synced from server
 let _requireCamera     = true;
@@ -910,7 +1059,7 @@ function _setSlotUI(slot, name) {
   if (ap) ap.style.display = name ? '' : 'none';
 }
 
-async function _loadOverlayBlob(slot, blob, name) {
+async function _loadOverlayBlob(slot, blob, name, align = 'full') {
   if (slot === 'full') {
     if (window.customOverlays.header) { window.customOverlays.header = null; _setSlotUI('header', null); }
     if (window.customOverlays.footer) { window.customOverlays.footer = null; _setSlotUI('footer', null); }
@@ -918,15 +1067,32 @@ async function _loadOverlayBlob(slot, blob, name) {
     if (window.customOverlays.full) { window.customOverlays.full = null; _setSlotUI('full', null); }
   }
   const bitmap = await createImageBitmap(blob);
-  window.customOverlays[slot] = { bitmap, name, align: 'full' };
+  window.customOverlays[slot] = { bitmap, name, align };
   _setSlotUI(slot, name);
+  if (align !== 'full') {
+    document.querySelectorAll('#align-' + slot + ' .align-opt').forEach(el => {
+      el.classList.toggle('active', el.dataset.val === align);
+    });
+  }
 }
 
-// Load persisted overlays on page load
+// Load persisted overlays on page load; footer falls back to the brand default
 ['header', 'footer', 'full'].forEach(slot => {
   fetch('/overlay/' + slot).then(async r => {
-    if (r.ok) await _loadOverlayBlob(slot, await r.blob(), slot + '.png');
-  }).catch(() => {});
+    if (r.ok) {
+      await _loadOverlayBlob(slot, await r.blob(), slot + '.png');
+    } else if (slot === 'footer') {
+      const fr = await fetch('/static/footer-logo.png');
+      if (fr.ok) await _loadOverlayBlob('footer', await fr.blob(), 'footer-logo.png');
+    }
+  }).catch(async () => {
+    if (slot === 'footer') {
+      try {
+        const fr = await fetch('/static/footer-logo.png');
+        if (fr.ok) await _loadOverlayBlob('footer', await fr.blob(), 'footer-logo.png');
+      } catch (_) {}
+    }
+  });
 });
 
 ['header', 'footer', 'full'].forEach(slot => {
@@ -1082,7 +1248,7 @@ _sse.onmessage = e => {
     const dispThresh = sliderThresh || al.threshold || 95;
     window.ardBlowing = al.level >= dispThresh;
     document.getElementById('btp-level-fill').style.width =
-      Math.min(100, (al.level / dispThresh) * 100) + '%';
+      Math.min(100, (al.level / 200) * 100) + '%';
     document.getElementById('btp-level-fill').style.background =
       window.ardBlowing ? '#3EBD87' : '#B8B0D0';
     document.getElementById('btp-level-thresh').style.left =
@@ -1136,7 +1302,7 @@ _sse.onmessage = e => {
 // ── Live canvas filter ────────────────────────────────────────────
 
 function _applyLiveFilter() {
-  document.getElementById('canvas').style.filter = 'grayscale(1)';
+  document.getElementById('canvas').style.filter = '';
 }
 
 function _setBarState(state) {
@@ -1154,9 +1320,25 @@ function setStatus(msg, cls) {
 
 // ── Print flow ────────────────────────────────────────────────────
 
+function _shiftedCanvas(src) {
+  const L = Math.round(window.printMarginLeft  || 0);
+  const R = Math.round(window.printMarginRight || 0);
+  if (!L && !R) return src;
+  const out = document.createElement('canvas');
+  out.width = src.width; out.height = src.height;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  const dW = Math.max(1, out.width - L - R);
+  ctx.drawImage(src, L, 0, dW, out.height);
+  return out;
+}
+
 async function _executePrint() {
   _stopProgress();
-  const dataUrl = document.getElementById('canvas').toDataURL('image/jpeg', 0.92);
+  const src     = document.getElementById('canvas');
+  const shifted = _shiftedCanvas(src);
+  const dataUrl = shifted.toDataURL('image/jpeg', 0.92);
   const rawData = window._capturedCameraImg
     ? window._capturedCameraImg.toDataURL('image/jpeg', 0.92)
     : null;
@@ -1182,6 +1364,28 @@ async function _executePrint() {
     _applyLiveFilter();
     _setBarState('live');
   }, 1500);
+}
+
+// ── Kiosk flow ────────────────────────────────────────────────────
+
+function kioskTrigger() {
+  if (window.uiState !== 'live') return;
+  // Flash
+  const flash = document.getElementById('flash');
+  flash.classList.remove('fire');
+  void flash.offsetWidth;
+  flash.classList.add('fire');
+  // Fade out title + candle, hide trigger circle
+  document.getElementById('stage-title').classList.add('kiosk-fade');
+  document.getElementById('candle').classList.add('kiosk-fade');
+  document.getElementById('trigger-circle').classList.add('hidden');
+  doCapture();
+}
+
+function _kioskReset() {
+  document.getElementById('stage-title').classList.remove('kiosk-fade');
+  document.getElementById('candle').classList.remove('kiosk-fade');
+  document.getElementById('trigger-circle').classList.remove('hidden');
 }
 
 // ── Public actions ────────────────────────────────────────────────
@@ -1237,6 +1441,7 @@ function doRetake() {
   _applyLiveFilter();
   _setBarState('live');
   setStatus('');
+  _kioskReset();
 }
 
 async function doPrint() {
@@ -1277,6 +1482,20 @@ document.getElementById('brightness-slider').addEventListener('input', function(
   document.getElementById('brightness-val').textContent = (offset > 0 ? '+' : '') + offset;
 });
 
+function _updateMargins(L, R) {
+  window.printMarginLeft  = L | 0;
+  window.printMarginRight = R | 0;
+  const ls = document.getElementById('margin-left-slider');
+  const rs = document.getElementById('margin-right-slider');
+  const lv = document.getElementById('margin-left-val');
+  const rv = document.getElementById('margin-right-val');
+  if (ls) ls.value = L | 0;
+  if (rs) rs.value = R | 0;
+  if (lv) lv.textContent = (L | 0) + ' px';
+  if (rv) rv.textContent = (R | 0) + ' px';
+}
+window._updateMargins = _updateMargins;
+
 // ── Template gallery ──────────────────────────────────────────────
 
 function _templateAutoName() {
@@ -1300,18 +1519,23 @@ function _slotToPayload(slot) {
 async function saveTemplate() {
   const { header, footer, full } = window.customOverlays;
   if (!header && !footer && !full) { setStatus('No overlay loaded', 'err'); return; }
+  const mL = window.printMarginLeft  || 0;
+  const mR = window.printMarginRight || 0;
   try {
-    await fetch('/saved-templates', {
+    const r = await fetch('/saved-templates', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: _templateAutoName(),
         slots: { full: _slotToPayload('full'), header: _slotToPayload('header'), footer: _slotToPayload('footer') },
+        margin_left:  mL,
+        margin_right: mR,
       }),
     });
-    setStatus('Template saved', 'ok');
+    if (!r.ok) { const t = await r.text(); setStatus('Save failed ' + r.status + ': ' + t.slice(0,80), 'err'); return; }
+    setStatus('Saved — L:' + mL + ' R:' + mR, 'ok');
     _loadSavedTemplates();
-    setTimeout(() => setStatus(''), 1500);
-  } catch { setStatus('Save failed', 'err'); }
+    setTimeout(() => setStatus(''), 2500);
+  } catch(e) { setStatus('Save error: ' + e.message, 'err'); }
 }
 
 async function _loadSavedTemplates() {
@@ -1351,13 +1575,21 @@ async function _loadSavedTemplates() {
 }
 
 async function _applyTemplate(tmpl) {
+  // Margins are independent of overlay loading — apply immediately
+  window._updateMargins(tmpl.margin_left || 0, tmpl.margin_right || 0);
+
   // Pre-load all bitmaps before touching current state → no flicker
   const built = {};
   for (const slot of ['full', 'header', 'footer']) {
     const data = tmpl.slots[slot];
     if (!data) { built[slot] = null; continue; }
-    const blob = await (await fetch(data.data_url)).blob();
-    built[slot] = { bitmap: await createImageBitmap(blob), name: data.original_name, align: data.align, blob };
+    try {
+      const blob = await (await fetch(data.data_url)).blob();
+      built[slot] = { bitmap: await createImageBitmap(blob), name: data.original_name, align: data.align, blob };
+    } catch (e) {
+      console.error('_applyTemplate: failed to load slot', slot, e);
+      built[slot] = null;
+    }
   }
   // Atomic swap
   ['full', 'header', 'footer'].forEach(s => {
@@ -1368,6 +1600,7 @@ async function _applyTemplate(tmpl) {
         el.classList.toggle('active', el.dataset.val === built[s].align));
     }
   });
+
   // Persist overlay files in background (survives page reload)
   for (const slot of ['full', 'header', 'footer']) {
     if (!built[slot]) { fetch('/overlay/' + slot, { method: 'DELETE' }).catch(() => {}); continue; }
@@ -1505,8 +1738,10 @@ function _drawSlotBitmap(ctx, slot, cW, cH, anchor) {
   let dX = 0;
   if (slot.align === 'center') dX = Math.round((cW - dW) / 2);
   else if (slot.align === 'right') dX = cW - dW;
-  ctx.drawImage(bm, dX, anchor === 'top' ? 0 : cH - dH, dW, dH);
+  const dY = anchor === 'top' ? 0 : cH - dH;
+  ctx.drawImage(bm, dX, dY, dW, dH);
 }
+
 
 function _coverCropMirror(ctx, src, srcW, srcH, dstX, dstY, dstW, dstH) {
   if (dstW <= 0 || dstH <= 0) return;

@@ -248,7 +248,7 @@ async def get_saved_template(index: int):
     return _saved_templates[index]
 
 
-def _template_thumbnail(slots: dict) -> Optional[str]:
+def _template_thumbnail(slots: dict, margin_left: int = 0, margin_right: int = 0) -> Optional[str]:
     TW, TH = 120, 180
     LABEL_W = 696
     base = Image.new("RGBA", (TW, TH), (45, 40, 65, 255))
@@ -277,6 +277,12 @@ def _template_thumbnail(slots: dict) -> Optional[str]:
                 base.paste(ov_r, (x, y), ov_r)
         except Exception:
             pass
+    if margin_left:
+        ml_px = max(1, round(margin_left * scale))
+        base.paste(Image.new("RGBA", (ml_px, TH), (255, 255, 255, 200)), (0, 0))
+    if margin_right:
+        mr_px = max(1, round(margin_right * scale))
+        base.paste(Image.new("RGBA", (mr_px, TH), (255, 255, 255, 200)), (TW - mr_px, 0))
     buf = io.BytesIO()
     base.convert("RGB").save(buf, format="JPEG", quality=82)
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
@@ -285,6 +291,8 @@ def _template_thumbnail(slots: dict) -> Optional[str]:
 class TemplateSave(BaseModel):
     name: str
     slots: dict
+    margin_left: int  = 0
+    margin_right: int = 0
 
 
 @app.post("/saved-templates")
@@ -303,8 +311,11 @@ async def save_template(req: TemplateSave):
             processed[slot] = {**data, "data_url": "data:image/png;base64," + b64}
         except Exception:
             processed[slot] = data
-    thumb = await asyncio.to_thread(_template_thumbnail, processed)
-    _saved_templates.insert(0, {"name": req.name, "thumbnail": thumb, "slots": processed})
+    thumb = await asyncio.to_thread(_template_thumbnail, processed, req.margin_left, req.margin_right)
+    _saved_templates.insert(0, {
+        "name": req.name, "thumbnail": thumb, "slots": processed,
+        "margin_left": req.margin_left, "margin_right": req.margin_right,
+    })
     del _saved_templates[20:]
     _save_json(_TEMPLATES_FILE, _saved_templates)
     return {"ok": True}
