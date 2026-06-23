@@ -5,7 +5,7 @@ import logging
 from typing import Optional
 
 import events as sse
-from label_printer.connections import WifiConnection, UsbConnection, find_usb_printer
+from label_printer.connections import WifiConnection, make_usb_conn, find_usb_printer
 
 logger = logging.getLogger("printer")
 
@@ -90,7 +90,7 @@ class PrinterManager:
                 self._usb_id = usb_id
 
                 if self._active == "usb" and usb_id:
-                    conn = UsbConnection(usb_id, self._model)
+                    conn = make_usb_conn(usb_id, self._model)
                 else:
                     conn = WifiConnection(self._wifi_ip, self._model)
 
@@ -99,7 +99,7 @@ class PrinterManager:
 
                 # Auto-fallback: WiFi unreachable but USB is present → switch to USB
                 if not connected and self._active == "wifi" and usb_id:
-                    conn      = UsbConnection(usb_id, self._model)
+                    conn      = make_usb_conn(usb_id, self._model)
                     result    = await asyncio.to_thread(conn.query_status)
                     connected = result["connected"]
                     if connected:
@@ -158,10 +158,10 @@ class PrinterManager:
 
     def send_job(self, instructions: bytes) -> dict:
         if self._active == "usb" and self._usb_id:
-            return UsbConnection(self._usb_id, self._model).send_job(instructions)
+            return make_usb_conn(self._usb_id, self._model).send_job(instructions)
         try:
             return WifiConnection(self._wifi_ip, self._model).send_job(instructions)
         except Exception:
             if self._usb_id:
-                return UsbConnection(self._usb_id, self._model).send_job(instructions)
+                return make_usb_conn(self._usb_id, self._model).send_job(instructions)
             raise
