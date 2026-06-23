@@ -957,7 +957,7 @@ async function removeOverlay(slot) {
 
 // ── Printer polling ───────────────────────────────────────────────
 
-window.printerState = { label_w: 696, label_h: 1044, label_id: '62red', connected: false };
+window.printerState = { label_w: 696, label_h: 1044, label_id: '62', connected: false };
 
 function _updatePrinter(d) {
   window.printerState = d;
@@ -965,16 +965,14 @@ function _updatePrinter(d) {
   const pstat      = document.getElementById('printer-pstat');
   const statusText = document.getElementById('printer-status-text');
 
-  // Header pill — connection-aware status text
-  const pc      = d.printer_connections || {};
-  const modePfx = d.active_mode === 'usb' ? 'USB' : d.active_mode === 'wifi' ? 'WiFi' : d.active_mode === 'bt' ? 'BT' : '';
+  const modePfx = d.active_mode === 'usb' ? 'USB' : 'WiFi';
   const clsMap  = { online: 'ok', printing: 'ok', checking: 'warn', error: 'err', offline: '' };
   const lblMap  = {
-    online:   modePfx ? modePfx + ' ready' : 'Ready',
+    online:   modePfx + ' ready',
     printing: 'Printing…',
     checking: 'Searching…',
-    error:    modePfx ? modePfx + ' error' : 'Error',
-    offline:  modePfx ? modePfx + ' offline' : 'Offline',
+    error:    modePfx + ' error',
+    offline:  modePfx + ' offline',
   };
   const newCls  = 'pstat' + (clsMap[d.status] ? ' ' + clsMap[d.status] : '');
   const newText = lblMap[d.status] ?? d.status;
@@ -982,28 +980,22 @@ function _updatePrinter(d) {
   if (statusText.textContent !== newText) statusText.textContent = newText;
 
   // WiFi | USB seg tabs
-  const modeSeg  = document.getElementById('printer-mode-seg');
-  const showSeg  = !!(pc.wifi?.available && d.active_mode !== 'bt');
-  modeSeg.style.display = showSeg ? '' : 'none';
-  if (showSeg) {
-    const dotCls = r => 'pdot' + (r === true ? ' ok' : r === false ? ' err' : '');
-    document.getElementById('pmsg-wifi').className = 'seg-btn' + (d.active_mode === 'wifi' ? ' active' : '');
-    document.getElementById('pmsg-usb').className  = 'seg-btn' + (d.active_mode === 'usb'  ? ' active' : '');
-    document.getElementById('pdot-wifi').className = dotCls(pc.wifi?.reachable);
-    document.getElementById('pdot-usb').className  = dotCls(pc.usb?.reachable);
-  }
+  const modeSeg = document.getElementById('printer-mode-seg');
+  modeSeg.style.display = '';
+  const dotCls = ok => 'pdot' + (ok ? ' ok' : '');
+  document.getElementById('pmsg-wifi').className = 'seg-btn' + (d.active_mode === 'wifi' ? ' active' : '');
+  document.getElementById('pmsg-usb').className  = 'seg-btn' + (d.active_mode === 'usb'  ? ' active' : '');
+  document.getElementById('pdot-wifi').className = dotCls(d.wifi?.connected);
+  document.getElementById('pdot-usb').className  = dotCls(d.usb?.connected);
 
   // Printer detail grid
   const detail = document.getElementById('printer-detail');
   const rows = [];
-  if (d.active_mode === 'bt') {
-    rows.push(['Mode', 'Bluetooth']);
-    if (d.bt_device) rows.push(['Dev', d.bt_device]);
-  } else if (d.active_mode === 'usb') {
-    const usbDev = pc.usb?.device;
+  if (d.active_mode === 'usb') {
+    const usbDev = d.usb?.device;
     if (usbDev) rows.push(['Dev', usbDev.replace('usb://', '').split('_')[0]]);
   } else {
-    if (d.ip) rows.push(['IP', d.ip]);
+    if (d.wifi?.ip) rows.push(['IP', d.wifi.ip]);
   }
   if (d.model) rows.push(['Model', d.model]);
   if (d.connected) {
@@ -1013,7 +1005,6 @@ function _updatePrinter(d) {
     }
     if (d.label_id) rows.push(['Label', d.label_id]);
     if (d.label_w && d.label_h) rows.push(['Px', d.label_w + ' × ' + d.label_h]);
-    if (d.phase)  rows.push(['Phase', d.phase]);
   }
   if (d.errors && d.errors.length) {
     rows.push(['Error', d.errors.join(' · '), 'err']);
@@ -1024,13 +1015,13 @@ function _updatePrinter(d) {
   if (detail.innerHTML !== newHtml) detail.innerHTML = newHtml;
 
   // Print buttons — disabled + relabelled when printer offline
-  const _offline = !d.connected;
+  const _offline  = !d.connected;
   const _offLabel = '🖨️ Not connected';
   ['btn-print', 'btn-quick-print'].forEach(id => {
     const btn = document.getElementById(id);
     if (!btn) return;
-    btn.disabled = _offline;
-    const _label = id === 'btn-print' ? '🖨️ Print' : '🖨️ Quick Print';
+    btn.disabled    = _offline;
+    const _label    = id === 'btn-print' ? '🖨️ Print' : '🖨️ Quick Print';
     btn.textContent = _offline ? _offLabel : _label;
   });
 
@@ -1044,7 +1035,6 @@ function _updatePrinter(d) {
     const newInfo = d.label_id + ' · ' + d.label_w + ' × ' + d.label_h + ' px';
     if (info.textContent !== newInfo) info.textContent = newInfo;
   }
-  // Ensure label-frame max-height is a concrete px value (fallback for % resolution in nested flex)
   const frame = canvas.closest('.label-frame');
   const wrap  = canvas.closest('.canvas-wrap');
   if (frame && wrap && wrap.clientHeight) {
@@ -1053,31 +1043,23 @@ function _updatePrinter(d) {
   }
 }
 
-let _pollTimer = null;
-async function _pollPrinter() {
-  try {
-    const r = await fetch('/printer');
-    if (r.ok) _updatePrinter(await r.json());
-  } catch {}
-  _pollTimer = setTimeout(_pollPrinter, 2000);
-}
-
 async function _setPrinterMode(mode) {
   await fetch('/printer/connect', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({mode}),
   }).catch(() => {});
-  clearTimeout(_pollTimer);
-  _pollPrinter();
 }
-
-_pollPrinter();
 
 // ── SSE ───────────────────────────────────────────────────────────
 const _sse = new EventSource('/events');
 _sse.onmessage = e => {
   let d; try { d = JSON.parse(e.data); } catch { return; }
+
+  if (d.printer !== undefined) {
+    _updatePrinter(d.printer);
+    // don't return — init payload also carries blow settings below
+  }
 
   if (d.event === 'cooldown') {
     _applyCooldownRemaining(d.remaining);
@@ -1117,6 +1099,7 @@ _sse.onmessage = e => {
     const port = d.arduino.port ? d.arduino.port.replace(/^.*\//, '') : null;
     document.getElementById('ard-pstat').className = 'pstat ' + (ok ? 'ok' : '');
     document.getElementById('ard-status-text').textContent = ok && port ? port : (ok ? 'connected' : 'No device');
+    document.getElementById('adm-ard-thresh').disabled = !ok;
   }
   if (d.sensitivity !== undefined) {
     _sensEl.value = Math.round(d.sensitivity * 100);
@@ -1183,11 +1166,14 @@ async function _executePrint() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image_data: dataUrl, raw_data: rawData }),
     });
-    if (!r.ok) throw new Error('print failed');
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body.detail || 'Print failed');
+    }
     setStatus('Printed!', 'ok');
     _loadPhotos();
   } catch(e) {
-    setStatus('Print error', 'err');
+    setStatus(e.message || 'Print error', 'err');
   }
   setTimeout(() => {
     setStatus('');
@@ -1465,6 +1451,7 @@ function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 function setCamPstat(state, text) {
   document.getElementById('cam-pstat').className   = 'pstat ' + state;
   document.getElementById('cam-status').textContent = text;
+  document.getElementById('adm-sens').disabled = (state === 'err');
 }
 
 // Load model
