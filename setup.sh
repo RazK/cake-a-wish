@@ -53,7 +53,7 @@ TASK_FILE="blow_detection/face_landmarker.task"
 TASK_URL="https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
 if [ ! -f "$TASK_FILE" ] || [ "$FORCE" -eq 1 ]; then
   echo "Downloading face_landmarker.task (~3.6 MB)..."
-  curl -L -o "$TASK_FILE" "$TASK_URL" && echo "✓ face_landmarker.task downloaded" || echo "Warning: download failed — camera blow detection will be unavailable"
+  curl -L -o "$TASK_FILE" "$TASK_URL" && echo "✓ face_landmarker.task downloaded" || { rm -f "$TASK_FILE"; echo "Warning: download failed — camera blow detection will be unavailable"; }
 else
   echo "✓ face_landmarker.task already present"
 fi

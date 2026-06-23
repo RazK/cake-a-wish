@@ -46,11 +46,11 @@ def main():
         import urllib.request as _req
         for _ in range(20):
             try:
-                _req.urlopen("http://localhost:8000/", timeout=0.5)
+                _req.urlopen("http://127.0.0.1:8000/", timeout=0.5)
                 break
             except Exception:
                 time.sleep(0.5)
-        webbrowser.open("http://localhost:8000")
+        webbrowser.open("http://127.0.0.1:8000")
 
     threading.Thread(target=_open_browser, daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
