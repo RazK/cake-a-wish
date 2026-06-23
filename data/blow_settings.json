@@ -1,5 +1,8 @@
 {
-  "enabled": true,
-  "sensitivity": 0.48,
-  "arduino_threshold": 152
+  "sensitivity": 0.47,
+  "arduino_threshold": 176,
+  "cooldown": 4.0,
+  "require_camera": false,
+  "require_arduino": false,
+  "sensor_gap": 0.8
 }
