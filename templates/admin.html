@@ -557,8 +557,7 @@
           </div>
         </div>
         <div class="level-track" style="margin-top:10px">
-          <div class="level-fill"   id="btp-cooldown-fill"   style="background:var(--amber);width:0%;transition:width 0.12s linear"></div>
-          <div class="level-thresh" id="btp-cooldown-thresh" style="left:40%"></div>
+          <div class="level-fill" id="btp-trig-fill" style="width:0%"></div>
         </div>
         <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="btp-cooldown-remaining">Ready</div>
         <div class="ctrl-row" style="margin-top:6px">
@@ -770,16 +769,9 @@ _ardThreshEl.addEventListener('change', () => {
 
 // Cooldown slider
 const _cooldownEl = document.getElementById('btp-cooldown');
-
-function _setCooldownTick(val) {
-  document.getElementById('btp-cooldown-thresh').style.left =
-    Math.min(96, (val / 10) * 100) + '%';
-}
-
 _cooldownEl.addEventListener('input', () => {
   _cooldownVal = parseInt(_cooldownEl.value);
   document.getElementById('btp-cooldown-val').textContent = _cooldownVal + 's';
-  _setCooldownTick(_cooldownVal);
 });
 _cooldownEl.addEventListener('change', () => {
   fetch('/blow/settings', {
@@ -789,20 +781,75 @@ _cooldownEl.addEventListener('change', () => {
   });
 });
 
-let _cooldownPrevRemaining = 0;
-function _applyCooldownRemaining(remaining) {
-  const pct = Math.max(0, (remaining / 10) * 100);
-  const fill = document.getElementById('btp-cooldown-fill');
-  if (_cooldownPrevRemaining === 0 && remaining > 0) {
-    // Initial fill: snap to position instantly, then re-enable drain animation
-    fill.style.transition = 'none';
-    fill.style.width = pct + '%';
-    void fill.offsetWidth; // force reflow so the snap commits before transition is restored
-    fill.style.transition = 'width 0.12s linear';
-  } else {
-    fill.style.width = pct + '%';
+// ── Trigger-state bar ─────────────────────────────────────────────
+// States: idle → armed (first sensor, drains over gap) → triggered (flash + cooldown drain)
+let _btpTrigState    = 'idle'; // 'idle' | 'armed' | 'triggered'
+let _btpFirstSource  = null;
+let _btpFlashTimer   = null;
+let _btpArmTimeout   = null;
+let _sensorGap       = 5.0;   // seconds; Step 3 will sync from server
+
+function _stopBtpFlash() {
+  if (_btpFlashTimer) { clearInterval(_btpFlashTimer); _btpFlashTimer = null; }
+}
+
+function _btpResetBar() {
+  _stopBtpFlash();
+  if (_btpArmTimeout) { clearTimeout(_btpArmTimeout); _btpArmTimeout = null; }
+  _btpTrigState   = 'idle';
+  _btpFirstSource = null;
+  const fill = document.getElementById('btp-trig-fill');
+  fill.style.transition = 'none';
+  fill.style.width = '0%';
+  document.getElementById('btp-cooldown-remaining').textContent = 'Ready';
+}
+
+function _btpArmBar(source) {
+  _btpResetBar();
+  _btpTrigState   = 'armed';
+  _btpFirstSource = source;
+  const fill  = document.getElementById('btp-trig-fill');
+  const color = source === 'mediapipe' ? 'var(--cyan)' : 'var(--green)';
+  fill.style.transition = 'none';
+  fill.style.background = color;
+  fill.style.width = '100%';
+  void fill.offsetWidth;
+  fill.style.transition = `width ${_sensorGap}s linear`;
+  fill.style.width = '0%';
+  _btpArmTimeout = setTimeout(() => {
+    if (_btpTrigState === 'armed') _btpResetBar();
+  }, _sensorGap * 1000 + 150);
+}
+
+function _btpTriggerBar(source) {
+  _stopBtpFlash();
+  if (_btpArmTimeout) { clearTimeout(_btpArmTimeout); _btpArmTimeout = null; }
+  _btpTrigState = 'triggered';
+  const fill = document.getElementById('btp-trig-fill');
+  fill.style.transition = 'none';
+  fill.style.width = '100%';
+  void fill.offsetWidth;
+  fill.style.transition = 'width 0.12s linear';
+  const camColor = 'var(--cyan)';
+  const ardColor = 'var(--green)';
+  const firstColor  = (_btpFirstSource || source) === 'mediapipe' ? camColor : ardColor;
+  const secondColor = source === 'mediapipe' ? camColor : ardColor;
+  fill.style.background = firstColor;
+  if (firstColor !== secondColor) {
+    let phase = false;
+    _btpFlashTimer = setInterval(() => {
+      phase = !phase;
+      document.getElementById('btp-trig-fill').style.background = phase ? secondColor : firstColor;
+    }, 350);
   }
-  _cooldownPrevRemaining = remaining;
+  _btpFirstSource = null;
+}
+
+function _applyCooldownRemaining(remaining) {
+  if (_btpTrigState !== 'triggered') return;
+  const pct = Math.max(0, (remaining / _cooldownVal) * 100);
+  document.getElementById('btp-trig-fill').style.width = pct + '%';
+  if (remaining === 0) _btpResetBar();
   document.getElementById('btp-cooldown-remaining').textContent =
     remaining > 0 ? remaining.toFixed(1) + 's' : 'Ready';
 }
@@ -1006,7 +1053,12 @@ _sse.onmessage = e => {
   }
 
   if (d.event === 'blow') {
-    if (d.will_print && window.uiState === 'live') startCountdown();
+    if (d.will_print) {
+      _btpTriggerBar(d.source);
+      if (window.uiState === 'live') startCountdown();
+    } else if (_requireCamera && _requireArduino) {
+      _btpArmBar(d.source);
+    }
     return;
   }
 
@@ -1046,7 +1098,6 @@ _sse.onmessage = e => {
     _cooldownVal = d.cooldown;
     _cooldownEl.value = d.cooldown;
     document.getElementById('btp-cooldown-val').textContent = d.cooldown + 's';
-    _setCooldownTick(d.cooldown);
   }
   if (d.require_camera !== undefined) {
     _requireCamera = d.require_camera;
