@@ -77,5 +77,9 @@ fi
 
 echo ""
 echo "=== Setup complete ==="
-echo "Double-click 'Cake A Wish.command' on your Desktop to start (macOS)."
-echo "Or run: ./run.sh"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  echo "Double-click 'Cake A Wish.command' on your Desktop to start."
+  echo "Or run: ./run.sh"
+else
+  echo "Run: ./run.sh"
+fi

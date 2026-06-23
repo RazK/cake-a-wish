@@ -31,6 +31,7 @@ def _ensure_task_file():
         urllib.request.urlretrieve(TASK_URL, TASK_FILE)
         print("Downloaded successfully.")
     except Exception as e:
+        TASK_FILE.unlink(missing_ok=True)  # remove partial file so next launch retries
         print(f"Warning: could not download face_landmarker.task: {e}")
         print(f"Camera blow detection will be unavailable until the file is present at:\n  {TASK_FILE}")
 
@@ -42,11 +43,17 @@ def main():
     from main import app
 
     def _open_browser():
-        time.sleep(1.5)
+        import urllib.request as _req
+        for _ in range(20):
+            try:
+                _req.urlopen("http://localhost:8000/", timeout=0.5)
+                break
+            except Exception:
+                time.sleep(0.5)
         webbrowser.open("http://localhost:8000")
 
     threading.Thread(target=_open_browser, daemon=True).start()
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
 
 
 if __name__ == "__main__":
