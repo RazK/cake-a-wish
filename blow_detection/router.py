@@ -14,6 +14,7 @@ Events pushed to /events SSE stream:
 import asyncio
 import json
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -108,12 +109,15 @@ class ArduinoReader:
                 while self._running:
                     raw = ser.readline().decode("utf-8", errors="replace").strip()
                     if not raw:
-                        if not _find_arduino_port():
+                        if not os.path.exists(port):
                             break
                         continue
                     if raw.startswith("LEVEL,"):
                         parts = raw.split(",")
-                        level, ard_thresh = int(parts[1]), int(parts[2])
+                        try:
+                            level, ard_thresh = int(parts[1]), int(parts[2])
+                        except (ValueError, IndexError):
+                            continue  # garbled line — skip
                         self._set(level=level, threshold=ard_thresh)
                         sse.broadcast({"arduino_level": {"level": level, "threshold": ard_thresh}})
                         with _settings_lock:
@@ -126,6 +130,8 @@ class ArduinoReader:
                             ard_state = "ready"
                     # Arduino's own BLOW signal ignored — server does its own detection
                 ser.close()
+            except serial.SerialException:
+                pass  # device disconnected — reconnect loop handles it
             except Exception as e:
                 logger.warning(f"Serial error: {e}")
             self._set(connected=False, port=None, level=0, threshold=0)
