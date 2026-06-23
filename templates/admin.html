@@ -755,15 +755,8 @@ function _updateModeLabel() {
 }
 
 function _updateCombBar() {
-  let triggered;
-  if (_requireCamera && _requireArduino)  triggered = window.ardBlowing && window.mpBlowing;
-  else if (_requireCamera)               triggered = window.mpBlowing;
-  else if (_requireArduino)              triggered = window.ardBlowing;
-  else                                   triggered = false;
-  if (triggered) {
-    console.log('[BTP] triggered — uiState:', window.uiState, '| enabled:', _btpEnabled, '| camera:', _requireCamera, '| arduino:', _requireArduino);
-    if (window.uiState === 'live' && _btpEnabled) startCountdown();
-  }
+  // Trigger is now driven server-side via the 'blow' SSE event (will_print flag).
+  // Require-flag fusion logic lives in BlowEngine._drain.
 }
 
 // Lip threshold (read by the MediaPipe module)
@@ -1024,6 +1017,11 @@ _sse.onmessage = e => {
 
   if (d.event === 'cooldown') {
     _applyCooldownRemaining(d.remaining);
+    return;
+  }
+
+  if (d.event === 'blow') {
+    if (d.will_print && window.uiState === 'live' && _btpEnabled) startCountdown();
     return;
   }
 

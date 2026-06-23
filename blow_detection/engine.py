@@ -43,6 +43,9 @@ class BlowEngine:
         self._cooldown = cooldown
         self._require_camera = require_camera
         self._require_arduino = require_arduino
+        self._sensor_gap: float = 5.0  # Step 3 will expose this via slider
+        self._last_mediapipe_ts: float = 0.0
+        self._last_arduino_ts: float = 0.0
         self._last_print_ts: float = 0.0
         self._last_cooldown_broadcast: float = 0.0
         self._lock = threading.Lock()
@@ -166,15 +169,35 @@ class BlowEngine:
                 if self._last_print_ts > 0 and (now - self._last_print_ts) < self._cooldown:
                     continue
 
-                will_print = self._blow_to_print
-                self._last_event = {
-                    "source": source,
-                    "ts": ts,
-                    "will_print": will_print,
-                }
+                req_cam = self._require_camera
+                req_ard = self._require_arduino
+
+                # Track last signal time per source
+                if source == 'mediapipe':
+                    self._last_mediapipe_ts = now
+                else:
+                    self._last_arduino_ts = now
+
+                # Sensor-fusion gate — require flags are the single source of truth
+                if req_cam and req_ard:
+                    # Both required: the other source must have fired within sensor_gap
+                    other_ts = self._last_arduino_ts if source == 'mediapipe' else self._last_mediapipe_ts
+                    gap = (now - other_ts) if other_ts > 0 else float('inf')
+                    will_print = self._blow_to_print and gap <= self._sensor_gap
+                elif req_cam:
+                    will_print = self._blow_to_print and source == 'mediapipe'
+                elif req_ard:
+                    will_print = self._blow_to_print and source == 'arduino'
+                else:
+                    will_print = False  # manual only
+
+                self._last_event = {"source": source, "ts": ts, "will_print": will_print}
                 if will_print:
                     self._last_print_ts = now
                     self._last_cooldown_broadcast = 0.0  # broadcast immediately
+                    # Clear source timestamps so a subsequent single-source signal doesn't re-trigger
+                    self._last_mediapipe_ts = 0.0
+                    self._last_arduino_ts = 0.0
 
             logger.info(f"Blow event: source={source} will_print={will_print}")
             try:
