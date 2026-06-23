@@ -25,13 +25,16 @@ PORT = 8000
 
 
 def _setup_logging():
-    log_dir = ROOT / "logs"
-    log_dir.mkdir(exist_ok=True)
-    handler = logging.handlers.RotatingFileHandler(
-        log_dir / "server.log", maxBytes=1_000_000, backupCount=5, encoding="utf-8"
-    )
-    handler.setFormatter(logging.Formatter("%(asctime)s %(name)-20s %(levelname)s %(message)s"))
-    logging.root.addHandler(handler)
+    try:
+        log_dir = ROOT / "logs"
+        log_dir.mkdir(exist_ok=True)
+        handler = logging.handlers.RotatingFileHandler(
+            log_dir / "server.log", maxBytes=1_000_000, backupCount=5, encoding="utf-8"
+        )
+        handler.setFormatter(logging.Formatter("%(asctime)s %(name)-20s %(levelname)s %(message)s"))
+        logging.root.addHandler(handler)
+    except Exception:
+        logging.root.addHandler(logging.NullHandler())
     logging.root.setLevel(logging.WARNING)
 
 
@@ -45,9 +48,17 @@ def _kill_existing():
                 pid = int(parts[4])
                 if pid != os.getpid():
                     subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
-                    time.sleep(0.5)
     except Exception:
         pass
+    # Poll until the port is free (up to 3 s) rather than sleeping a fixed amount.
+    import socket as _socket
+    for _ in range(30):
+        try:
+            s = _socket.create_connection(("127.0.0.1", PORT), timeout=0.1)
+            s.close()
+            time.sleep(0.1)
+        except OSError:
+            break
 
 
 def _ensure_task_file():

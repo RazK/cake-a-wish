@@ -111,7 +111,11 @@ powershell -NoProfile -Command ^
   "$s.IconLocation    = '%SCRIPT_DIR%static\favicon.ico,0';" ^
   "$s.WindowStyle     = 7;" ^
   "$s.Save()"
-echo Desktop shortcut created
+if errorlevel 1 (
+    echo Warning: Desktop shortcut creation failed -- check PowerShell execution policy
+) else (
+    echo Desktop shortcut created
+)
 :desktop_done
 
 :: 9. Register in Windows Startup folder (auto-run on boot)
@@ -129,7 +133,11 @@ powershell -NoProfile -Command ^
   "$s.IconLocation    = '%SCRIPT_DIR%static\favicon.ico,0';" ^
   "$s.WindowStyle     = 7;" ^
   "$s.Save()"
-echo Startup entry registered — app will launch automatically on boot
+if errorlevel 1 (
+    echo Warning: Startup entry creation failed -- check PowerShell execution policy
+) else (
+    echo Startup entry registered -- app will launch automatically on boot
+)
 :startup_done
 
 echo.
