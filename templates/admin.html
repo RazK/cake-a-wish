@@ -538,7 +538,7 @@
         <div class="card-head" style="margin-bottom:0">
           <div class="card-label" style="margin-bottom:0">Blow to Print</div>
           <div class="pstat" id="btp-pstat">
-            <span class="pstat-text" id="btp-pstat-text">Camera + Arduino</span>
+            <span class="pstat-text" id="btp-pstat-text">Both</span>
             <span class="pstat-dot" id="btp-pstat-dot" style="background:var(--primary)"></span>
           </div>
         </div>
@@ -720,10 +720,10 @@ function btpSetRequire(sensor, on) {
 
 function _updateModeLabel() {
   let text, color;
-  if (_requireCamera && _requireArduino) { text = 'Camera + Arduino'; color = 'var(--primary)'; }
-  else if (_requireCamera)               { text = 'Camera only';       color = 'var(--cyan)'; }
-  else if (_requireArduino)              { text = 'Arduino only';      color = 'var(--green)'; }
-  else                                   { text = 'Manual only';       color = 'var(--muted)'; }
+  if (_requireCamera && _requireArduino) { text = 'Both';    color = 'var(--primary)'; }
+  else if (_requireCamera)               { text = 'Camera';  color = 'var(--cyan)'; }
+  else if (_requireArduino)              { text = 'Arduino'; color = 'var(--green)'; }
+  else                                   { text = 'Manual';  color = 'var(--muted)'; }
   document.getElementById('btp-pstat-text').textContent = text;
   document.getElementById('btp-pstat-dot').style.background = color;
 }
