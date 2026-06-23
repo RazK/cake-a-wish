@@ -1,13 +1,13 @@
-"""Start the Cake A Wish server and open the browser automatically.
+"""Start the Cake A Wish server and open the browser.
 
-Usage:
-    python launcher.py
-
-This is the intended entry point for both development and end-user use.
-It downloads the face_landmarker.task model on first run if missing,
-then starts uvicorn on localhost:8000 and opens the browser.
+Intended to be launched via pythonw.exe (no terminal window).
+On each launch it kills any existing server on port 8000, starts fresh,
+and opens the browser. Logs rotate in logs/server.log.
 """
+import logging
+import logging.handlers
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -15,45 +15,86 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-TASK_FILE = Path(__file__).parent / "blow_detection" / "face_landmarker.task"
+ROOT     = Path(__file__).parent
+TASK_FILE = ROOT / "blow_detection" / "face_landmarker.task"
 TASK_URL  = (
     "https://storage.googleapis.com/mediapipe-models"
     "/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
 )
+PORT = 8000
+
+
+def _setup_logging():
+    try:
+        log_dir = ROOT / "logs"
+        log_dir.mkdir(exist_ok=True)
+        handler = logging.handlers.RotatingFileHandler(
+            log_dir / "server.log", maxBytes=1_000_000, backupCount=5, encoding="utf-8"
+        )
+        handler.setFormatter(logging.Formatter("%(asctime)s %(name)-20s %(levelname)s %(message)s"))
+        logging.root.addHandler(handler)
+    except Exception:
+        logging.root.addHandler(logging.NullHandler())
+    logging.root.setLevel(logging.WARNING)
+
+
+def _kill_existing():
+    """Kill any process currently listening on our port."""
+    try:
+        result = subprocess.run(["netstat", "-ano"], capture_output=True, text=True)
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 5 and f":{PORT}" in parts[1] and parts[3] == "LISTENING":
+                pid = int(parts[4])
+                if pid != os.getpid():
+                    subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+    except Exception:
+        pass
+    # Poll until the port is free (up to 3 s) rather than sleeping a fixed amount.
+    import socket as _socket
+    for _ in range(30):
+        try:
+            s = _socket.create_connection(("127.0.0.1", PORT), timeout=0.1)
+            s.close()
+            time.sleep(0.1)
+        except OSError:
+            break
 
 
 def _ensure_task_file():
     if TASK_FILE.exists():
         return
-    print("Downloading face_landmarker.task (~3.6 MB) — first run only...")
+    logging.getLogger("launcher").warning("Downloading face_landmarker.task (~3.6 MB)...")
     TASK_FILE.parent.mkdir(parents=True, exist_ok=True)
     try:
         urllib.request.urlretrieve(TASK_URL, TASK_FILE)
-        print("Downloaded successfully.")
     except Exception as e:
-        TASK_FILE.unlink(missing_ok=True)  # remove partial file so next launch retries
-        print(f"Warning: could not download face_landmarker.task: {e}")
-        print(f"Camera blow detection will be unavailable until the file is present at:\n  {TASK_FILE}")
+        TASK_FILE.unlink(missing_ok=True)
+        logging.getLogger("launcher").error("Could not download face_landmarker.task: %s", e)
+
+
+def _open_browser():
+    for _ in range(40):
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{PORT}/", timeout=0.5)
+            break
+        except Exception:
+            time.sleep(0.5)
+    webbrowser.open(f"http://127.0.0.1:{PORT}")
 
 
 def main():
+    _setup_logging()
+    _kill_existing()
     _ensure_task_file()
+
+    threading.Thread(target=_open_browser, daemon=True).start()
 
     import uvicorn
     from main import app
-
-    def _open_browser():
-        import urllib.request as _req
-        for _ in range(20):
-            try:
-                _req.urlopen("http://127.0.0.1:8000/", timeout=0.5)
-                break
-            except Exception:
-                time.sleep(0.5)
-        webbrowser.open("http://127.0.0.1:8000")
-
-    threading.Thread(target=_open_browser, daemon=True).start()
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+    # log_config=None prevents uvicorn from calling sys.stdout.isatty()
+    # which crashes under pythonw.exe (no stdout)
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning", log_config=None)
 
 
 if __name__ == "__main__":
