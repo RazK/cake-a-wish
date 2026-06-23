@@ -88,6 +88,15 @@ class BlowEngine:
             self._cooldown = value
 
     @property
+    def sensor_gap(self) -> float:
+        return self._sensor_gap
+
+    @sensor_gap.setter
+    def sensor_gap(self, value: float):
+        with self._lock:
+            self._sensor_gap = value
+
+    @property
     def require_camera(self) -> bool:
         return self._require_camera
 

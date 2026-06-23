@@ -33,7 +33,7 @@ _settings_lock = threading.Lock()
 
 
 def _load_settings() -> dict:
-    defaults = {"enabled": False, "sensitivity": 0.5, "arduino_threshold": None, "cooldown": 4.0, "require_camera": True, "require_arduino": True}
+    defaults = {"enabled": False, "sensitivity": 0.5, "arduino_threshold": None, "cooldown": 4.0, "require_camera": True, "require_arduino": True, "sensor_gap": 1.0}
     if SETTINGS_PATH.exists():
         try:
             return {**defaults, **json.loads(SETTINGS_PATH.read_text())}
@@ -153,6 +153,7 @@ _engine = BlowEngine(
     cooldown=_settings.get("cooldown", 4.0),
     require_camera=_settings.get("require_camera", True),
     require_arduino=_settings.get("require_arduino", True),
+    sensor_gap=_settings.get("sensor_gap", 1.0),
 )
 _arduino = ArduinoReader(_engine.arduino_queue)
 
@@ -222,6 +223,7 @@ async def blow_stream(request: Request):
                 "cooldown":          _settings.get("cooldown", 4.0),
                 "require_camera":    _settings.get("require_camera", True),
                 "require_arduino":   _settings.get("require_arduino", True),
+                "sensor_gap":        _settings.get("sensor_gap", 1.0),
             }
         yield f"data: {json.dumps(init)}\n\n"
 
@@ -252,6 +254,7 @@ class _BlowSettings(BaseModel):
     cooldown: Optional[float] = None
     require_camera: Optional[bool] = None
     require_arduino: Optional[bool] = None
+    sensor_gap: Optional[float] = None
 
 
 @router.post("/blow/settings")
@@ -273,5 +276,8 @@ async def blow_settings(body: _BlowSettings):
         if body.require_arduino is not None:
             _settings["require_arduino"] = body.require_arduino
             _engine.require_arduino = body.require_arduino
+        if body.sensor_gap is not None:
+            _settings["sensor_gap"] = body.sensor_gap
+            _engine.sensor_gap = body.sensor_gap
         _save_settings(_settings)
     return {"ok": True}

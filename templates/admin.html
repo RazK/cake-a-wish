@@ -556,6 +556,13 @@
             <span class="tog-opt opt-off">Off</span>
           </div>
         </div>
+        <div id="btp-gap-row" style="display:none">
+          <div class="ctrl-row" style="margin-top:10px">
+            <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">sensor gap</span>
+            <input type="range" id="btp-gap" min="0.2" max="3.0" step="0.1" value="1.0" style="accent-color:var(--primary)">
+          </div>
+          <div style="font-size:0.65rem;color:var(--muted);margin-top:2px;text-align:right" id="btp-gap-val">1.0s</div>
+        </div>
         <div class="level-track" style="margin-top:10px">
           <div class="level-fill" id="btp-trig-fill" style="width:0%"></div>
         </div>
@@ -725,6 +732,8 @@ function _updateModeLabel() {
   else                                   { text = 'Manual';  color = 'var(--muted)'; }
   document.getElementById('btp-pstat-text').textContent = text;
   document.getElementById('btp-pstat-dot').style.background = color;
+  document.getElementById('btp-gap-row').style.display =
+    (_requireCamera && _requireArduino) ? '' : 'none';
 }
 
 function _updateCombBar() {
@@ -778,6 +787,20 @@ _cooldownEl.addEventListener('change', () => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cooldown: parseInt(_cooldownEl.value) }),
+  });
+});
+
+// Sensor gap slider (Both-required mode only)
+const _gapEl = document.getElementById('btp-gap');
+_gapEl.addEventListener('input', () => {
+  _sensorGap = parseFloat(_gapEl.value);
+  document.getElementById('btp-gap-val').textContent = _sensorGap.toFixed(1) + 's';
+});
+_gapEl.addEventListener('change', () => {
+  fetch('/blow/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sensor_gap: parseFloat(_gapEl.value) }),
   });
 });
 
@@ -1098,6 +1121,11 @@ _sse.onmessage = e => {
     _cooldownVal = d.cooldown;
     _cooldownEl.value = d.cooldown;
     document.getElementById('btp-cooldown-val').textContent = d.cooldown + 's';
+  }
+  if (d.sensor_gap !== undefined) {
+    _sensorGap = d.sensor_gap;
+    _gapEl.value = d.sensor_gap;
+    document.getElementById('btp-gap-val').textContent = d.sensor_gap.toFixed(1) + 's';
   }
   if (d.require_camera !== undefined) {
     _requireCamera = d.require_camera;
