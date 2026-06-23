@@ -9,16 +9,19 @@ from brother_ql.backends.helpers import discover, send
 from brother_ql.reader import interpret_response
 
 # macOS refuses to let libusb detach its kernel driver (EACCES), but the
-# printer still works after claim_interface. Suppress the error so the
-# rest of the pyusb backend proceeds.
+# printer still works after claim_interface. Suppress only EACCES so the
+# rest of the pyusb backend proceeds; other errors (EBUSY, ENODEV) still raise.
 try:
+    import errno as _errno
     import usb.core as _usb_core
+    from usb.core import USBError as _USBError
     _real_detach = _usb_core.Device.detach_kernel_driver
     def _safe_detach(self, interface):
         try:
             return _real_detach(self, interface)
-        except Exception:
-            pass
+        except _USBError as e:
+            if e.errno != _errno.EACCES:
+                raise
     _usb_core.Device.detach_kernel_driver = _safe_detach
 except Exception:
     pass

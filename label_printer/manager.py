@@ -150,6 +150,10 @@ class PrinterManager:
                 await asyncio.sleep(1.0 if connected else 2.0)
             except Exception:
                 logger.exception("printer monitor tick failed")
+                error_state = {**self._state, "connected": False, "status": "offline"}
+                if error_state != self._state:
+                    self._state = error_state
+                    sse.broadcast({"printer": error_state})
                 await asyncio.sleep(2.0)
 
     def send_job(self, instructions: bytes) -> dict:
