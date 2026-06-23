@@ -10,6 +10,13 @@ if "%1"=="--force" set FORCE=1
 
 echo === Cake A Wish Setup ===
 
+:: 0. Stop any running server so venv files are not locked
+echo Stopping any running server...
+for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":8000 " ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%p >nul 2>&1
+)
+timeout /t 1 /nobreak >nul
+
 :: 1. Check Python 3.11+
 python --version >nul 2>&1
 if errorlevel 1 (

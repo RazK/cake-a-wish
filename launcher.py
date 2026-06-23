@@ -81,7 +81,9 @@ def main():
 
     import uvicorn
     from main import app
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning")
+    # log_config=None prevents uvicorn from calling sys.stdout.isatty()
+    # which crashes under pythonw.exe (no stdout)
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning", log_config=None)
 
 
 if __name__ == "__main__":
