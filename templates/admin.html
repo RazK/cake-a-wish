@@ -1113,9 +1113,10 @@ _sse.onmessage = e => {
 
   // 1s status heartbeat
   if (d.arduino !== undefined) {
-    const ok = d.arduino.connected;
-    document.getElementById('ard-pstat').className   = 'pstat ' + (ok ? 'ok' : '');
-    document.getElementById('ard-status-text').textContent = ok ? 'connected' : 'disconnected';
+    const ok   = d.arduino.connected;
+    const port = d.arduino.port ? d.arduino.port.replace(/^.*\//, '') : null;
+    document.getElementById('ard-pstat').className = 'pstat ' + (ok ? 'ok' : '');
+    document.getElementById('ard-status-text').textContent = ok && port ? port : (ok ? 'connected' : 'No device');
   }
   if (d.sensitivity !== undefined) {
     _sensEl.value = Math.round(d.sensitivity * 100);
