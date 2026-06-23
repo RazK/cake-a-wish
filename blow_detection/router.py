@@ -33,7 +33,7 @@ _settings_lock = threading.Lock()
 
 
 def _load_settings() -> dict:
-    defaults = {"enabled": False, "sensitivity": 0.5, "arduino_threshold": None, "cooldown": 4.0}
+    defaults = {"enabled": False, "sensitivity": 0.5, "arduino_threshold": None, "cooldown": 4.0, "require_camera": True, "require_arduino": True}
     if SETTINGS_PATH.exists():
         try:
             return {**defaults, **json.loads(SETTINGS_PATH.read_text())}
@@ -151,6 +151,8 @@ _engine = BlowEngine(
     ),
     blow_to_print=_settings["enabled"],
     cooldown=_settings.get("cooldown", 4.0),
+    require_camera=_settings.get("require_camera", True),
+    require_arduino=_settings.get("require_arduino", True),
 )
 _arduino = ArduinoReader(_engine.arduino_queue)
 
@@ -218,6 +220,8 @@ async def blow_stream(request: Request):
                 "sensitivity":       _settings["sensitivity"],
                 "arduino_threshold": _settings["arduino_threshold"],
                 "cooldown":          _settings.get("cooldown", 4.0),
+                "require_camera":    _settings.get("require_camera", True),
+                "require_arduino":   _settings.get("require_arduino", True),
             }
         yield f"data: {json.dumps(init)}\n\n"
 
@@ -246,6 +250,8 @@ class _BlowSettings(BaseModel):
     sensitivity: Optional[float] = None
     arduino_threshold: Optional[int] = None
     cooldown: Optional[float] = None
+    require_camera: Optional[bool] = None
+    require_arduino: Optional[bool] = None
 
 
 @router.post("/blow/settings")
@@ -261,5 +267,11 @@ async def blow_settings(body: _BlowSettings):
         if body.cooldown is not None:
             _settings["cooldown"] = body.cooldown
             _engine.cooldown = body.cooldown
+        if body.require_camera is not None:
+            _settings["require_camera"] = body.require_camera
+            _engine.require_camera = body.require_camera
+        if body.require_arduino is not None:
+            _settings["require_arduino"] = body.require_arduino
+            _engine.require_arduino = body.require_arduino
         _save_settings(_settings)
     return {"ok": True}

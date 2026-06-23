@@ -546,12 +546,21 @@
             <span class="tog-opt opt-off">Off</span>
           </div>
         </div>
-        <div style="margin-top:8px" class="blow-row is-combo">
-          <span class="blow-lbl" style="font-size:0.66rem">Combined</span>
-          <div class="blow-track">
-            <div class="blow-fill" id="adm-bar-comb" style="background:var(--primary);width:0%"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+          <span style="font-size:0.65rem;color:var(--muted)">Require Camera</span>
+          <div class="tog-pill is-on" id="btp-req-camera" onclick="btpSetRequire('camera', !this.classList.contains('is-on'))">
+            <span class="tog-opt opt-on">On</span>
+            <span class="tog-opt opt-off">Off</span>
           </div>
         </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+          <span style="font-size:0.65rem;color:var(--muted)">Require Arduino</span>
+          <div class="tog-pill is-on" id="btp-req-arduino" onclick="btpSetRequire('arduino', !this.classList.contains('is-on'))">
+            <span class="tog-opt opt-on">On</span>
+            <span class="tog-opt opt-off">Off</span>
+          </div>
+        </div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:6px;text-align:right" id="btp-mode-label">Camera + Arduino</div>
         <div class="ctrl-row" style="margin-top:10px">
           <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">cooldown</span>
           <input type="range" id="btp-cooldown" min="1" max="10" step="1" value="4" style="accent-color:var(--amber)">
@@ -699,6 +708,8 @@ let _btpUserSet        = false;  // true once user has manually toggled
 let _brightnessVal     = 100;
 let _countdownTimer    = null;
 let _cooldownVal       = 4.0;    // seconds, synced from server
+let _requireCamera     = true;
+let _requireArduino    = true;
 
 // ── Blow to Print ─────────────────────────────────────────────────
 
@@ -722,11 +733,35 @@ function _btpSyncFromServer(on) {
   if (!_btpUserSet) _btpApplyEnabled(on);
 }
 
+function btpSetRequire(sensor, on) {
+  if (sensor === 'camera') _requireCamera = on;
+  else _requireArduino = on;
+  document.getElementById('btp-req-' + sensor).className = 'tog-pill ' + (on ? 'is-on' : 'is-off');
+  _updateModeLabel();
+  fetch('/blow/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sensor === 'camera' ? { require_camera: on } : { require_arduino: on }),
+  });
+}
+
+function _updateModeLabel() {
+  let text;
+  if (_requireCamera && _requireArduino)  text = 'Camera + Arduino';
+  else if (_requireCamera)               text = 'Camera only';
+  else if (_requireArduino)              text = 'Arduino only';
+  else                                   text = 'Manual only';
+  document.getElementById('btp-mode-label').textContent = text;
+}
+
 function _updateCombBar() {
-  const combined = window.ardBlowing && window.mpBlowing;
-  document.getElementById('adm-bar-comb').style.width = combined ? '100%' : '0%';
-  if (combined) {
-    console.log('[BTP] combined — uiState:', window.uiState, '| enabled:', _btpEnabled);
+  let triggered;
+  if (_requireCamera && _requireArduino)  triggered = window.ardBlowing && window.mpBlowing;
+  else if (_requireCamera)               triggered = window.mpBlowing;
+  else if (_requireArduino)              triggered = window.ardBlowing;
+  else                                   triggered = false;
+  if (triggered) {
+    console.log('[BTP] triggered — uiState:', window.uiState, '| enabled:', _btpEnabled, '| camera:', _requireCamera, '| arduino:', _requireArduino);
     if (window.uiState === 'live' && _btpEnabled) startCountdown();
   }
 }
@@ -1030,6 +1065,17 @@ _sse.onmessage = e => {
     _cooldownEl.value = d.cooldown;
     document.getElementById('btp-cooldown-val').textContent = d.cooldown + 's';
     _setCooldownTick(d.cooldown);
+  }
+  if (d.require_camera !== undefined) {
+    _requireCamera = d.require_camera;
+    document.getElementById('btp-req-camera').className = 'tog-pill ' + (_requireCamera ? 'is-on' : 'is-off');
+  }
+  if (d.require_arduino !== undefined) {
+    _requireArduino = d.require_arduino;
+    document.getElementById('btp-req-arduino').className = 'tog-pill ' + (_requireArduino ? 'is-on' : 'is-off');
+  }
+  if (d.require_camera !== undefined || d.require_arduino !== undefined) {
+    _updateModeLabel();
   }
 };
 

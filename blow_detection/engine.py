@@ -24,6 +24,8 @@ class BlowEngine:
         blow_to_print: bool = False,
         cooldown: float = 4.0,
         on_cooldown: Optional[Callable[[float], None]] = None,
+        require_camera: bool = True,
+        require_arduino: bool = True,
     ):
         """
         on_blow(source, timestamp, will_print)
@@ -39,6 +41,8 @@ class BlowEngine:
         self._on_cooldown = on_cooldown
         self._blow_to_print = blow_to_print
         self._cooldown = cooldown
+        self._require_camera = require_camera
+        self._require_arduino = require_arduino
         self._last_print_ts: float = 0.0
         self._last_cooldown_broadcast: float = 0.0
         self._lock = threading.Lock()
@@ -79,6 +83,24 @@ class BlowEngine:
     def cooldown(self, value: float):
         with self._lock:
             self._cooldown = value
+
+    @property
+    def require_camera(self) -> bool:
+        return self._require_camera
+
+    @require_camera.setter
+    def require_camera(self, value: bool):
+        with self._lock:
+            self._require_camera = value
+
+    @property
+    def require_arduino(self) -> bool:
+        return self._require_arduino
+
+    @require_arduino.setter
+    def require_arduino(self, value: bool):
+        with self._lock:
+            self._require_arduino = value
 
     @property
     def last_event(self) -> Optional[dict]:
