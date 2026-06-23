@@ -76,7 +76,7 @@ class ArduinoReader:
         self._thread: Optional[threading.Thread] = None
         self._running = False
         self._lock = threading.Lock()
-        self._status = {"connected": False, "level": 0, "threshold": 0}
+        self._status = {"connected": False, "port": None, "level": 0, "threshold": 0}
 
     def start(self):
         self._running = True
@@ -98,12 +98,12 @@ class ArduinoReader:
         while self._running:
             port = _find_arduino_port()
             if not port:
-                self._set(connected=False, level=0, threshold=0)
+                self._set(connected=False, port=None, level=0, threshold=0)
                 time.sleep(5)
                 continue
             try:
                 ser = serial.Serial(port, 115200, timeout=1)
-                self._set(connected=True)
+                self._set(connected=True, port=port)
                 ard_state = "ready"   # "ready" | "blowing"
                 while self._running:
                     raw = ser.readline().decode("utf-8", errors="replace").strip()
@@ -128,7 +128,7 @@ class ArduinoReader:
                 ser.close()
             except Exception as e:
                 logger.warning(f"Serial error: {e}")
-            self._set(connected=False, level=0, threshold=0)
+            self._set(connected=False, port=None, level=0, threshold=0)
             time.sleep(5)
 
 
@@ -138,6 +138,8 @@ _mediapipe_last_seen: float = 0.0
 
 
 def _init_payload() -> dict:
+    ard = _arduino.get_status()
+    active = (time.time() - _mediapipe_last_seen) < 30
     with _settings_lock:
         return {
             "sensitivity":       _settings["sensitivity"],
@@ -146,6 +148,8 @@ def _init_payload() -> dict:
             "require_camera":    _settings.get("require_camera", True),
             "require_arduino":   _settings.get("require_arduino", True),
             "sensor_gap":        _settings.get("sensor_gap", 1.0),
+            "arduino":           {"connected": ard["connected"], "port": ard["port"]},
+            "mediapipe":         {"active": active},
         }
 
 
@@ -175,9 +179,10 @@ _arduino = ArduinoReader(_engine.arduino_queue)
 async def _status_loop():
     while True:
         await asyncio.sleep(1)
+        ard = _arduino.get_status()
         active = (time.time() - _mediapipe_last_seen) < 30
         sse.broadcast({
-            "arduino":   {"connected": _arduino.get_status()["connected"]},
+            "arduino":   {"connected": ard["connected"], "port": ard["port"]},
             "mediapipe": {"active": active},
         })
 
