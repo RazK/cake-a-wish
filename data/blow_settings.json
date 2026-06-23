@@ -1,6 +1,6 @@
 {
   "sensitivity": 0.43,
-  "arduino_threshold": 176,
+  "arduino_threshold": 26,
   "cooldown": 4.0,
   "require_camera": true,
   "require_arduino": true,

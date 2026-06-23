@@ -136,12 +136,20 @@ def _show_window():
     def open_browser():
         webbrowser.open(f"http://127.0.0.1:{PORT}")
 
+    def restart_app():
+        root.destroy()
+        import sys
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
     def quit_app():
         root.destroy()
         os._exit(0)
 
     tk.Button(btn_frame, text="Open", command=open_browser,
               bg="#7c5cbf", fg="white", relief="flat",
+              font=("Segoe UI", 9), padx=14, pady=4).pack(side="left", padx=(0, 8))
+    tk.Button(btn_frame, text="Restart", command=restart_app,
+              bg="#9a3070", fg="#fce8f5", relief="flat",
               font=("Segoe UI", 9), padx=14, pady=4).pack(side="left", padx=(0, 8))
     tk.Button(btn_frame, text="Quit", command=quit_app,
               bg="#4a3060", fg="#e8d5f5", relief="flat",

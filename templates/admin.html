@@ -92,8 +92,10 @@
       user-select: none;
       overflow: hidden;
       position: relative;
-      transition: background 0.15s;
+      transition: background 0.15s, width 0.22s cubic-bezier(.4,0,.2,1);
     }
+    /* Folded header collapses down to just the icon (+ chevron), matching the column */
+    .col-head.collapsed { width: 60px; }
     .col-head:hover { background: rgba(124,111,247,0.08); }
     .left-col-head  { border-right: 1px solid var(--border); }
     .right-col-head { border-left:  1px solid var(--border); }
@@ -111,6 +113,9 @@
 
     .left-col-head.collapsed  .col-head-chevron { transform: rotate(180deg); }
     .right-col-head.collapsed .col-head-chevron { transform: rotate(-180deg); }
+
+    /* Collapsed column header: show only the icon, hide the title text */
+    .col-head.collapsed .col-head-label { display: none; }
 
     .app-title {
       flex: 1;
@@ -196,7 +201,7 @@
       background: #fff;
       border-radius: 16px;
       box-shadow: 0 18px 50px rgba(60,50,110,.22);
-      padding: 14px 16px 20px;
+      padding: 14px 16px 0;
       flex: 0 0 auto;
       display: flex;
       flex-direction: column;
@@ -429,7 +434,7 @@
     .ctrl-lbl { font-size:0.69rem; color:var(--sub); flex-shrink:0; width:68px; }
     .ctrl-val { font-size:0.68rem; font-weight:600; color:var(--text);
                 width:36px; text-align:right; flex-shrink:0; overflow:hidden; }
-    input[type=range] { flex:1; accent-color:var(--primary); cursor:pointer; height:4px; }
+    input[type=range] { flex:1; min-width:0; accent-color:var(--primary); cursor:pointer; height:4px; }
     .num-input { width:44px; border:1.5px solid var(--border); border-radius:6px;
                  padding:3px 6px; font:inherit; font-size:0.72rem; color:var(--text);
                  background:var(--ghost); text-align:center; }
@@ -489,8 +494,7 @@
     /* ── Template slot ──────────────────────────────────────────── */
     .tmpl-slot      { display:flex; flex-direction:column; gap:4px; padding:3px 0; }
     .tmpl-slot-head { display:flex; align-items:center; gap:5px; min-height:20px; }
-    .tmpl-slot-name { font-size:0.68rem; font-weight:700; letter-spacing:.06em;
-                      text-transform:uppercase; color:var(--sub); flex:1; }
+    .tmpl-slot-name { font-size:0.69rem; color:var(--sub); flex:1; }
     .tmpl-file-name { font-size:0.66rem; color:var(--green); flex-shrink:1; min-width:0;
                       max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .tmpl-divider   { border:0; border-top:1px solid var(--border); margin:4px 0; }
@@ -561,7 +565,7 @@
 
   <!-- Top bar: always-visible column headers + app title -->
   <div class="top-bar">
-    <div class="col-head left-col-head" id="left-col-head" onclick="toggleCol('left')">
+    <div class="col-head left-col-head collapsed" id="left-col-head" onclick="toggleCol('left')">
       <span class="col-head-icon">⚙️</span>
       <span class="col-head-label">Hardware Settings</span>
       <span class="col-head-chevron">‹</span>
@@ -569,7 +573,7 @@
     <div class="app-title">
       <span class="header-title">🎂 Cake A Wish 🖨️</span>
     </div>
-    <div class="col-head right-col-head" id="right-col-head" onclick="toggleCol('right')">
+    <div class="col-head right-col-head collapsed" id="right-col-head" onclick="toggleCol('right')">
       <span class="col-head-chevron">›</span>
       <span class="col-head-label">Photo Settings</span>
       <span class="col-head-icon">🖼️</span>
@@ -746,10 +750,8 @@
       <div class="col-body">
 
       <!-- ── Template card ── -->
-      <div class="card rc-panel">
+      <div class="card">
         <div class="card-label" style="margin-bottom:10px">Template</div>
-
-        <!-- Full -->
         <div class="tmpl-slot">
           <div class="tmpl-slot-head">
             <span class="tmpl-slot-name">Full</span>
@@ -759,10 +761,7 @@
             <button id="overlay-remove-full" class="act-btn act-btn--danger" style="display:none" onclick="removeOverlay('full')">✕</button>
           </div>
         </div>
-
         <div class="tmpl-divider"></div>
-
-        <!-- Header -->
         <div class="tmpl-slot">
           <div class="tmpl-slot-head">
             <span class="tmpl-slot-name">Header</span>
@@ -778,10 +777,7 @@
             <span class="align-opt"        data-val="right"  onclick="setAlign('header','right')">Right</span>
           </div>
         </div>
-
         <div class="tmpl-divider"></div>
-
-        <!-- Footer -->
         <div class="tmpl-slot">
           <div class="tmpl-slot-head">
             <span class="tmpl-slot-name">Footer</span>
@@ -797,25 +793,44 @@
             <span class="align-opt"        data-val="right"  onclick="setAlign('footer','right')">Right</span>
           </div>
         </div>
+      </div>
 
-        <div class="tmpl-divider"></div>
-
-        <!-- Print margins -->
-        <div style="padding:6px 0 2px">
-          <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-            <span class="col-label">Left margin</span>
-            <span id="margin-left-val" style="font-size:11px;color:var(--muted)">0 px</span>
+      <!-- ── Margins card ── -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom:10px">Margins</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="ctrl-row">
+            <span class="ctrl-lbl">Left</span>
+            <input type="range" id="margin-left-slider" min="0" max="200" value="0" oninput="window.printMarginLeft=parseInt(this.value);document.getElementById('margin-left-val').textContent=this.value">
+            <span class="ctrl-val" id="margin-left-val">0</span>
           </div>
-          <input type="range" id="margin-left-slider" min="0" max="200" value="0" style="width:100%" oninput="window.printMarginLeft=parseInt(this.value);document.getElementById('margin-left-val').textContent=this.value+' px'">
-          <div style="display:flex;justify-content:space-between;margin-top:8px;margin-bottom:2px">
-            <span class="col-label">Right margin</span>
-            <span id="margin-right-val" style="font-size:11px;color:var(--muted)">0 px</span>
+          <div class="ctrl-row">
+            <span class="ctrl-lbl">Right</span>
+            <input type="range" id="margin-right-slider" min="0" max="200" value="0" style="transform:scaleX(-1)" oninput="window.printMarginRight=parseInt(this.value);document.getElementById('margin-right-val').textContent=this.value">
+            <span class="ctrl-val" id="margin-right-val">0</span>
           </div>
-          <input type="range" id="margin-right-slider" min="0" max="200" value="0" style="width:100%;transform:scaleX(-1)" oninput="window.printMarginRight=parseInt(this.value);document.getElementById('margin-right-val').textContent=this.value+' px'">
+          <div class="ctrl-row">
+            <span class="ctrl-lbl">Bottom</span>
+            <input type="range" id="margin-bottom-slider" min="-150" max="100" value="0" oninput="window.printMarginBottom=parseInt(this.value);document.getElementById('margin-bottom-val').textContent=this.value">
+            <span class="ctrl-val" id="margin-bottom-val">0</span>
+          </div>
         </div>
+      </div>
 
-        <button class="btn btn-outline" style="width:100%;margin-top:10px" onclick="saveTemplate()">💾 Save template</button>
+      <!-- ── Color card ── -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom:10px">Color</div>
+        <div class="ctrl-row">
+          <span class="ctrl-lbl">Brightness</span>
+          <input type="range" id="brightness-slider" min="0" max="200" value="40" style="accent-color:#606060">
+          <span class="ctrl-val" id="brightness-val">0</span>
+        </div>
+      </div>
 
+      <!-- ── Presets card ── -->
+      <div class="card rc-panel">
+        <div class="card-label" style="margin-bottom:10px">Presets</div>
+        <button class="btn btn-outline" style="width:100%" onclick="saveTemplate()">💾 Save preset</button>
         <div class="gallery-grid" id="tmpl-gallery">
           <span class="gg-empty">No saved templates</span>
         </div>
@@ -823,16 +838,21 @@
 
       <!-- ── Photo card ── -->
       <div class="card rc-panel">
-        <div class="card-label">Photos</div>
-        <div class="ctrl-row">
-          <span class="ctrl-lbl">Brightness</span>
-          <input type="range" id="brightness-slider" min="0" max="200" value="40">
-          <span class="ctrl-val" id="brightness-val">0</span>
+        <div class="card-head" style="margin-bottom:0">
+          <div class="card-label" style="margin-bottom:0">Gallery</div>
+          <div class="tog-pill is-off" id="photos-toggle" onclick="photosSetSaving(!this.classList.contains('is-on'))">
+            <span class="tog-opt opt-on">Save</span>
+            <span class="tog-opt opt-off">Off</span>
+          </div>
         </div>
-        <button class="btn btn-outline" id="save-photo-btn" style="width:100%;margin-top:8px" onclick="savePhoto()" disabled>💾 Save photo</button>
-
-        <div class="gallery-grid" id="photo-gallery">
-          <span class="gg-empty">No saved photos</span>
+        <div id="photos-on-body" style="display:none;margin-top:8px">
+          <button class="btn btn-outline" id="save-photo-btn" style="width:100%" onclick="savePhoto()" disabled>💾 Save photo</button>
+          <div class="gallery-grid" id="photo-gallery">
+            <span class="gg-empty">No saved photos</span>
+          </div>
+        </div>
+        <div id="photos-off-body" style="padding:8px 0 4px">
+          <span style="font-size:0.72rem;color:var(--muted)">Photos are not saved to this device.</span>
         </div>
       </div>
 
@@ -856,13 +876,24 @@ window.ardBlowing    = false;
 window.mpBlowing     = false;
 window.uiState       = 'live';
 window.brightnessVal    = 40;
-window.printMarginLeft  = 0;
-window.printMarginRight = 0;
+window.printMarginLeft   = 0;
+window.printMarginRight  = 0;
+window.printMarginBottom = 0;
+let _photosSaving = false;
 let _brightnessVal       = 40;
 let _countdownTimer    = null;
 let _cooldownVal       = 4.0;    // seconds, synced from server
 let _requireCamera     = true;
 let _requireArduino    = true;
+
+// ── Photo saving toggle ───────────────────────────────────────────
+
+function photosSetSaving(on) {
+  _photosSaving = on;
+  document.getElementById('photos-toggle').className = 'tog-pill ' + (on ? 'is-on' : 'is-off');
+  document.getElementById('photos-on-body').style.display  = on ? '' : 'none';
+  document.getElementById('photos-off-body').style.display = on ? 'none' : '';
+}
 
 // ── Blow to Print ─────────────────────────────────────────────────
 
@@ -1076,24 +1107,39 @@ async function _loadOverlayBlob(slot, blob, name, align = 'full') {
   }
 }
 
-// Load persisted overlays on page load; footer falls back to the brand default
-['header', 'footer', 'full'].forEach(slot => {
-  fetch('/overlay/' + slot).then(async r => {
-    if (r.ok) {
-      await _loadOverlayBlob(slot, await r.blob(), slot + '.png');
-    } else if (slot === 'footer') {
-      const fr = await fetch('/static/footer-logo.png');
-      if (fr.ok) await _loadOverlayBlob('footer', await fr.blob(), 'footer-logo.png');
-    }
-  }).catch(async () => {
-    if (slot === 'footer') {
-      try {
+// Restore loose per-slot overlays; footer falls back to the brand default
+function _loadLooseOverlays() {
+  ['header', 'footer', 'full'].forEach(slot => {
+    fetch('/overlay/' + slot).then(async r => {
+      if (r.ok) {
+        await _loadOverlayBlob(slot, await r.blob(), slot + '.png');
+      } else if (slot === 'footer') {
         const fr = await fetch('/static/footer-logo.png');
         if (fr.ok) await _loadOverlayBlob('footer', await fr.blob(), 'footer-logo.png');
-      } catch (_) {}
-    }
+      }
+    }).catch(async () => {
+      if (slot === 'footer') {
+        try {
+          const fr = await fetch('/static/footer-logo.png');
+          if (fr.ok) await _loadOverlayBlob('footer', await fr.blob(), 'footer-logo.png');
+        } catch (_) {}
+      }
+    });
   });
-});
+}
+
+// Single boot path: prefer the most recently saved preset (overlays + margins +
+// brightness); only if none exists fall back to the loose per-slot overlays.
+async function _bootOverlays() {
+  try {
+    const r = await fetch('/saved-templates');
+    if (r.ok && (await r.json()).length) {
+      const res = await fetch('/saved-templates/0');
+      if (res.ok) { _applyTemplate(await res.json()); return; }
+    }
+  } catch (_) {}
+  _loadLooseOverlays();
+}
 
 ['header', 'footer', 'full'].forEach(slot => {
   document.getElementById('overlay-input-' + slot).addEventListener('change', async e => {
@@ -1321,16 +1367,18 @@ function setStatus(msg, cls) {
 // ── Print flow ────────────────────────────────────────────────────
 
 function _shiftedCanvas(src) {
-  const L = Math.round(window.printMarginLeft  || 0);
-  const R = Math.round(window.printMarginRight || 0);
-  if (!L && !R) return src;
+  const L = Math.round(window.printMarginLeft   || 0);
+  const R = Math.round(window.printMarginRight  || 0);
+  const B = Math.round(window.printMarginBottom || 0);
+  if (!L && !R && !B) return src;
   const out = document.createElement('canvas');
   out.width = src.width; out.height = src.height;
   const ctx = out.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, out.width, out.height);
-  const dW = Math.max(1, out.width - L - R);
-  ctx.drawImage(src, L, 0, dW, out.height);
+  const dW = Math.max(1, out.width  - L - R);
+  const dH = Math.max(1, out.height - B);
+  ctx.drawImage(src, L, 0, dW, dH);
   return out;
 }
 
@@ -1339,7 +1387,7 @@ async function _executePrint() {
   const src     = document.getElementById('canvas');
   const shifted = _shiftedCanvas(src);
   const dataUrl = shifted.toDataURL('image/jpeg', 0.92);
-  const rawData = window._capturedCameraImg
+  const rawData = (_photosSaving && window._capturedCameraImg)
     ? window._capturedCameraImg.toDataURL('image/jpeg', 0.92)
     : null;
   setStatus('Printing…');
@@ -1475,24 +1523,43 @@ document.addEventListener('keydown', e => {
 });
 
 // ── Brightness slider ─────────────────────────────────────────────
-document.getElementById('brightness-slider').addEventListener('input', function() {
-  _brightnessVal = parseInt(this.value);
-  window.brightnessVal = _brightnessVal;
-  const offset = _brightnessVal - 100;
+function _updateBrightnessThumb(val) {
+  const g = Math.round(50 + (val / 200) * 195);
+  document.getElementById('brightness-slider').style.accentColor = `rgb(${g},${g},${g})`;
+}
+function _setBrightness(val) {
+  val = val | 0;
+  _brightnessVal = val;
+  window.brightnessVal = val;
+  const sl = document.getElementById('brightness-slider');
+  if (sl) sl.value = val;
+  const offset = val - 100;
   document.getElementById('brightness-val').textContent = (offset > 0 ? '+' : '') + offset;
+  _updateBrightnessThumb(val);
+}
+window._setBrightness = _setBrightness;
+document.getElementById('brightness-slider').addEventListener('input', function() {
+  _setBrightness(parseInt(this.value));
 });
+_updateBrightnessThumb(40);
 
-function _updateMargins(L, R) {
-  window.printMarginLeft  = L | 0;
-  window.printMarginRight = R | 0;
+function _updateMargins(L, R, B) {
+  B = (B === undefined ? 0 : B) | 0;
+  window.printMarginLeft   = L | 0;
+  window.printMarginRight  = R | 0;
+  window.printMarginBottom = B;
   const ls = document.getElementById('margin-left-slider');
   const rs = document.getElementById('margin-right-slider');
+  const bs = document.getElementById('margin-bottom-slider');
   const lv = document.getElementById('margin-left-val');
   const rv = document.getElementById('margin-right-val');
+  const bv = document.getElementById('margin-bottom-val');
   if (ls) ls.value = L | 0;
   if (rs) rs.value = R | 0;
-  if (lv) lv.textContent = (L | 0) + ' px';
-  if (rv) rv.textContent = (R | 0) + ' px';
+  if (bs) bs.value = B;
+  if (lv) lv.textContent = L | 0;
+  if (rv) rv.textContent = R | 0;
+  if (bv) bv.textContent = B;
 }
 window._updateMargins = _updateMargins;
 
@@ -1519,20 +1586,24 @@ function _slotToPayload(slot) {
 async function saveTemplate() {
   const { header, footer, full } = window.customOverlays;
   if (!header && !footer && !full) { setStatus('No overlay loaded', 'err'); return; }
-  const mL = window.printMarginLeft  || 0;
-  const mR = window.printMarginRight || 0;
+  const mL = window.printMarginLeft   || 0;
+  const mR = window.printMarginRight  || 0;
+  const mB = window.printMarginBottom || 0;
+  const br = window.brightnessVal != null ? window.brightnessVal : 40;
   try {
     const r = await fetch('/saved-templates', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: _templateAutoName(),
         slots: { full: _slotToPayload('full'), header: _slotToPayload('header'), footer: _slotToPayload('footer') },
-        margin_left:  mL,
-        margin_right: mR,
+        margin_left:   mL,
+        margin_right:  mR,
+        margin_bottom: mB,
+        brightness:    br,
       }),
     });
     if (!r.ok) { const t = await r.text(); setStatus('Save failed ' + r.status + ': ' + t.slice(0,80), 'err'); return; }
-    setStatus('Saved — L:' + mL + ' R:' + mR, 'ok');
+    setStatus('Saved — L:' + mL + ' R:' + mR + ' B:' + mB, 'ok');
     _loadSavedTemplates();
     setTimeout(() => setStatus(''), 2500);
   } catch(e) { setStatus('Save error: ' + e.message, 'err'); }
@@ -1575,8 +1646,9 @@ async function _loadSavedTemplates() {
 }
 
 async function _applyTemplate(tmpl) {
-  // Margins are independent of overlay loading — apply immediately
-  window._updateMargins(tmpl.margin_left || 0, tmpl.margin_right || 0);
+  // Margins + brightness are independent of overlay loading — apply immediately
+  window._updateMargins(tmpl.margin_left || 0, tmpl.margin_right || 0, tmpl.margin_bottom || 0);
+  window._setBrightness(tmpl.brightness != null ? tmpl.brightness : 40);
 
   // Pre-load all bitmaps before touching current state → no flicker
   const built = {};
@@ -1665,6 +1737,7 @@ async function _loadPhotoItem(item) {
 _applyLiveFilter();
 _setBarState('live');
 _loadSavedTemplates();
+_bootOverlays();
 _loadPhotos();
 </script>
 
