@@ -26,6 +26,7 @@ class BlowEngine:
         on_cooldown: Optional[Callable[[float], None]] = None,
         require_camera: bool = True,
         require_arduino: bool = True,
+        sensor_gap: float = 1.0,
     ):
         """
         on_blow(source, timestamp, will_print)
@@ -43,7 +44,7 @@ class BlowEngine:
         self._cooldown = cooldown
         self._require_camera = require_camera
         self._require_arduino = require_arduino
-        self._sensor_gap: float = 5.0  # Step 3 will expose this via slider
+        self._sensor_gap = sensor_gap
         self._last_mediapipe_ts: float = 0.0
         self._last_arduino_ts: float = 0.0
         self._last_print_ts: float = 0.0
