@@ -557,21 +557,26 @@
           </div>
         </div>
         <div id="btp-gap-row" style="display:none">
-          <div class="ctrl-row" style="margin-top:10px">
+          <div class="level-track" style="margin-top:10px">
+            <div class="level-fill" id="btp-gap-fill" style="width:0%"></div>
+          </div>
+          <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="btp-gap-val">1.0s</div>
+          <div class="ctrl-row" style="margin-top:6px">
             <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">sensor gap</span>
             <input type="range" id="btp-gap" min="0.2" max="3.0" step="0.1" value="1.0" style="accent-color:var(--primary)">
           </div>
-          <div style="font-size:0.65rem;color:var(--muted);margin-top:2px;text-align:right" id="btp-gap-val">1.0s</div>
         </div>
-        <div class="level-track" style="margin-top:10px">
-          <div class="level-fill" id="btp-trig-fill" style="width:0%"></div>
+        <div id="btp-cooldown-row">
+          <div class="level-track" style="margin-top:10px">
+            <div class="level-fill" id="btp-cooldown-fill" style="width:0%;background:var(--primary)"></div>
+          </div>
+          <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="btp-cooldown-remaining">Ready</div>
+          <div class="ctrl-row" style="margin-top:6px">
+            <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">cooldown</span>
+            <input type="range" id="btp-cooldown" min="1" max="10" step="1" value="4" style="accent-color:var(--primary)">
+          </div>
+          <div style="font-size:0.65rem;color:var(--muted);margin-top:2px;text-align:right" id="btp-cooldown-val">4s</div>
         </div>
-        <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="btp-cooldown-remaining">Ready</div>
-        <div class="ctrl-row" style="margin-top:6px">
-          <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">cooldown</span>
-          <input type="range" id="btp-cooldown" min="1" max="10" step="1" value="4" style="accent-color:var(--amber)">
-        </div>
-        <div style="font-size:0.65rem;color:var(--muted);margin-top:2px;text-align:right" id="btp-cooldown-val">4s</div>
       </div>
 
       </div><!-- .col-body -->
@@ -724,16 +729,28 @@ function btpSetRequire(sensor, on) {
   });
 }
 
+function _btpModeColor() {
+  if (_requireCamera && _requireArduino) return 'var(--primary)';
+  if (_requireCamera)  return 'var(--cyan)';
+  if (_requireArduino) return 'var(--green)';
+  return 'var(--muted)';
+}
+
 function _updateModeLabel() {
-  let text, color;
-  if (_requireCamera && _requireArduino) { text = 'Both';    color = 'var(--primary)'; }
-  else if (_requireCamera)               { text = 'Camera';  color = 'var(--cyan)'; }
-  else if (_requireArduino)              { text = 'Arduino'; color = 'var(--green)'; }
-  else                                   { text = 'Manual';  color = 'var(--muted)'; }
+  let text;
+  if (_requireCamera && _requireArduino) text = 'Both';
+  else if (_requireCamera)               text = 'Camera';
+  else if (_requireArduino)              text = 'Arduino';
+  else                                   text = 'Manual';
+  const color = _btpModeColor();
   document.getElementById('btp-pstat-text').textContent = text;
   document.getElementById('btp-pstat-dot').style.background = color;
+  const active = _requireCamera || _requireArduino;
   document.getElementById('btp-gap-row').style.display =
     (_requireCamera && _requireArduino) ? '' : 'none';
+  document.getElementById('btp-cooldown-row').style.display = active ? '' : 'none';
+  document.getElementById('btp-cooldown').style.accentColor = color;
+  document.getElementById('btp-cooldown-fill').style.background = color;
 }
 
 function _updateCombBar() {
@@ -790,7 +807,15 @@ _cooldownEl.addEventListener('change', () => {
   });
 });
 
-// Sensor gap slider (Both-required mode only)
+// ── BTP two-bar state machine ─────────────────────────────────────
+// gap bar   (btp-gap-fill)      — drains when first sensor armed
+// cooldown bar (btp-cooldown-fill) — drains after print triggers
+let _btpTrigState   = 'idle'; // 'idle' | 'armed' | 'triggered'
+let _btpFirstSource = null;
+let _btpArmTimeout  = null;
+let _sensorGap      = 1.0;   // seconds; synced from server
+
+// Sensor gap slider
 const _gapEl = document.getElementById('btp-gap');
 _gapEl.addEventListener('input', () => {
   _sensorGap = parseFloat(_gapEl.value);
@@ -804,34 +829,26 @@ _gapEl.addEventListener('change', () => {
   });
 });
 
-// ── Trigger-state bar ─────────────────────────────────────────────
-// States: idle → armed (first sensor, drains over gap) → triggered (flash + cooldown drain)
-let _btpTrigState    = 'idle'; // 'idle' | 'armed' | 'triggered'
-let _btpFirstSource  = null;
-let _btpFlashTimer   = null;
-let _btpArmTimeout   = null;
-let _sensorGap       = 5.0;   // seconds; Step 3 will sync from server
-
-function _stopBtpFlash() {
-  if (_btpFlashTimer) { clearInterval(_btpFlashTimer); _btpFlashTimer = null; }
+function _btpResetGapBar() {
+  if (_btpArmTimeout) { clearTimeout(_btpArmTimeout); _btpArmTimeout = null; }
+  const fill = document.getElementById('btp-gap-fill');
+  fill.style.transition = 'none';
+  fill.style.width = '0%';
 }
 
-function _btpResetBar() {
-  _stopBtpFlash();
-  if (_btpArmTimeout) { clearTimeout(_btpArmTimeout); _btpArmTimeout = null; }
-  _btpTrigState   = 'idle';
-  _btpFirstSource = null;
-  const fill = document.getElementById('btp-trig-fill');
+function _btpResetCooldownBar() {
+  const fill = document.getElementById('btp-cooldown-fill');
   fill.style.transition = 'none';
   fill.style.width = '0%';
   document.getElementById('btp-cooldown-remaining').textContent = 'Ready';
 }
 
 function _btpArmBar(source) {
-  _btpResetBar();
+  _btpResetGapBar();
+  _btpResetCooldownBar();
   _btpTrigState   = 'armed';
   _btpFirstSource = source;
-  const fill  = document.getElementById('btp-trig-fill');
+  const fill  = document.getElementById('btp-gap-fill');
   const color = source === 'mediapipe' ? 'var(--cyan)' : 'var(--green)';
   fill.style.transition = 'none';
   fill.style.background = color;
@@ -840,39 +857,31 @@ function _btpArmBar(source) {
   fill.style.transition = `width ${_sensorGap}s linear`;
   fill.style.width = '0%';
   _btpArmTimeout = setTimeout(() => {
-    if (_btpTrigState === 'armed') _btpResetBar();
+    if (_btpTrigState === 'armed') {
+      _btpTrigState = 'idle';
+      _btpFirstSource = null;
+    }
   }, _sensorGap * 1000 + 150);
 }
 
 function _btpTriggerBar(source) {
-  _stopBtpFlash();
-  if (_btpArmTimeout) { clearTimeout(_btpArmTimeout); _btpArmTimeout = null; }
-  _btpTrigState = 'triggered';
-  const fill = document.getElementById('btp-trig-fill');
-  fill.style.transition = 'none';
-  fill.style.width = '100%';
-  void fill.offsetWidth;
-  fill.style.transition = 'width 0.12s linear';
-  const camColor = 'var(--cyan)';
-  const ardColor = 'var(--green)';
-  const firstColor  = (_btpFirstSource || source) === 'mediapipe' ? camColor : ardColor;
-  const secondColor = source === 'mediapipe' ? camColor : ardColor;
-  fill.style.background = firstColor;
-  if (firstColor !== secondColor) {
-    let phase = false;
-    _btpFlashTimer = setInterval(() => {
-      phase = !phase;
-      document.getElementById('btp-trig-fill').style.background = phase ? secondColor : firstColor;
-    }, 350);
-  }
+  _btpResetGapBar();
+  _btpTrigState   = 'triggered';
   _btpFirstSource = null;
+  const fill = document.getElementById('btp-cooldown-fill');
+  fill.style.transition = 'none';
+  fill.style.background = _btpModeColor();
+  fill.style.width = '100%';
 }
 
 function _applyCooldownRemaining(remaining) {
   if (_btpTrigState !== 'triggered') return;
   const pct = Math.max(0, (remaining / _cooldownVal) * 100);
-  document.getElementById('btp-trig-fill').style.width = pct + '%';
-  if (remaining === 0) _btpResetBar();
+  document.getElementById('btp-cooldown-fill').style.width = pct + '%';
+  if (remaining === 0) {
+    _btpTrigState = 'idle';
+    _btpResetCooldownBar();
+  }
   document.getElementById('btp-cooldown-remaining').textContent =
     remaining > 0 ? remaining.toFixed(1) + 's' : 'Ready';
 }
