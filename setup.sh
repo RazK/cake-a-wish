@@ -33,10 +33,14 @@ fi
 source .venv/bin/activate
 echo "✓ Virtual environment ready"
 
-# 3. Install dependencies
-echo "Installing dependencies (this may take a minute)..."
-pip install -r requirements.txt -q
-echo "✓ Dependencies installed"
+# 3. Install dependencies (skip if already installed)
+if ! python3 -c "import uvicorn, fastapi, PIL, brother_ql, serial" &>/dev/null; then
+  echo "Installing dependencies (this may take a minute)..."
+  pip install -r requirements.txt -q
+  echo "✓ Dependencies installed"
+else
+  echo "✓ Dependencies already installed"
+fi
 
 # 4. Download face_landmarker.task if missing
 TASK_FILE="blow_detection/face_landmarker.task"
@@ -48,17 +52,21 @@ else
   echo "✓ face_landmarker.task already present"
 fi
 
-# 5. Create desktop shortcut (macOS)
+# 5. Create desktop shortcut (macOS, skip if already exists)
 if [[ "$OSTYPE" == "darwin"* ]]; then
   SHORTCUT="$HOME/Desktop/Cake A Wish.command"
-  cat > "$SHORTCUT" <<EOF
+  if [ ! -f "$SHORTCUT" ]; then
+    cat > "$SHORTCUT" <<EOF
 #!/bin/bash
 cd "$SCRIPT_DIR"
 source .venv/bin/activate
 python launcher.py
 EOF
-  chmod +x "$SHORTCUT"
-  echo "✓ Desktop shortcut created: ~/Desktop/Cake A Wish.command"
+    chmod +x "$SHORTCUT"
+    echo "✓ Desktop shortcut created: ~/Desktop/Cake A Wish.command"
+  else
+    echo "✓ Desktop shortcut already exists"
+  fi
 fi
 
 echo ""
