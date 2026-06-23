@@ -2,8 +2,13 @@
 
 Endpoints:
   POST /blow/event    — browser MediaPipe feeds a detected blow into BlowEngine
-  GET  /blow/stream   — SSE: status every 1s + {event:"blow"} on detection
-  POST /blow/settings — update enabled/sensitivity/arduino_threshold, persists to JSON
+  POST /blow/settings — update sensitivity/cooldown/require flags, persists to JSON
+
+Events pushed to /events SSE stream:
+  blow            — {source, ts, will_print}
+  cooldown        — {remaining}
+  arduino_level   — {level, threshold}
+  arduino/mediapipe status — via _status_loop
 """
 
 import asyncio
@@ -16,10 +21,11 @@ from typing import Optional
 
 import serial
 import serial.tools.list_ports
-from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import APIRouter
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+import events as sse
 from blow_detection.engine import BlowEngine
 
 logger = logging.getLogger("blow_router")
@@ -102,12 +108,14 @@ class ArduinoReader:
                 while self._running:
                     raw = ser.readline().decode("utf-8", errors="replace").strip()
                     if not raw:
+                        if not _find_arduino_port():
+                            break
                         continue
                     if raw.startswith("LEVEL,"):
                         parts = raw.split(",")
                         level, ard_thresh = int(parts[1]), int(parts[2])
                         self._set(level=level, threshold=ard_thresh)
-                        _broadcast({"arduino_level": {"level": level, "threshold": ard_thresh}})
+                        sse.broadcast({"arduino_level": {"level": level, "threshold": ard_thresh}})
                         with _settings_lock:
                             srv_thresh = _settings.get("arduino_threshold") or ard_thresh
                         above = level >= srv_thresh
@@ -124,29 +132,33 @@ class ArduinoReader:
             time.sleep(5)
 
 
-# ── SSE subscriber pool ───────────────────────────────────────────
+# ── SSE ───────────────────────────────────────────────────────────
 
-_sse_clients: set = set()
-_sse_lock = threading.Lock()
-_loop: Optional[asyncio.AbstractEventLoop] = None
 _mediapipe_last_seen: float = 0.0
 
 
-def _broadcast(payload: dict):
-    with _sse_lock:
-        clients = list(_sse_clients)
-    if _loop and clients:
-        for q in clients:
-            _loop.call_soon_threadsafe(q.put_nowait, payload)
+def _init_payload() -> dict:
+    with _settings_lock:
+        return {
+            "sensitivity":       _settings["sensitivity"],
+            "arduino_threshold": _settings["arduino_threshold"],
+            "cooldown":          _settings.get("cooldown", 4.0),
+            "require_camera":    _settings.get("require_camera", True),
+            "require_arduino":   _settings.get("require_arduino", True),
+            "sensor_gap":        _settings.get("sensor_gap", 1.0),
+        }
+
+
+sse.register_init_hook(_init_payload)
 
 
 # ── Engine + Arduino (module-level singletons) ────────────────────
 
 _engine = BlowEngine(
-    on_blow=lambda source, ts, will_print: _broadcast(
+    on_blow=lambda source, ts, will_print: sse.broadcast(
         {"event": "blow", "source": source, "ts": ts, "will_print": will_print}
     ),
-    on_cooldown=lambda remaining: _broadcast(
+    on_cooldown=lambda remaining: sse.broadcast(
         {"event": "cooldown", "remaining": remaining}
     ),
     blow_to_print=True,
@@ -164,7 +176,7 @@ async def _status_loop():
     while True:
         await asyncio.sleep(1)
         active = (time.time() - _mediapipe_last_seen) < 30
-        _broadcast({
+        sse.broadcast({
             "arduino":   {"connected": _arduino.get_status()["connected"]},
             "mediapipe": {"active": active},
         })
@@ -172,8 +184,7 @@ async def _status_loop():
 
 def startup():
     """Call from FastAPI lifespan — starts background threads and grabs the event loop."""
-    global _loop
-    _loop = asyncio.get_event_loop()
+    sse.set_loop(asyncio.get_event_loop())
     _engine.start()
     _arduino.start()
     asyncio.create_task(_status_loop())
@@ -206,44 +217,6 @@ async def blow_event(body: _BlowEvent):
     _mediapipe_last_seen = time.time()
     _engine.mediapipe_queue.put(("mediapipe", body.ts))
     return {"ok": True}
-
-
-@router.get("/blow/stream")
-async def blow_stream(request: Request):
-    q: asyncio.Queue = asyncio.Queue()
-    with _sse_lock:
-        _sse_clients.add(q)
-
-    async def generate():
-        with _settings_lock:
-            init = {
-                "sensitivity":       _settings["sensitivity"],
-                "arduino_threshold": _settings["arduino_threshold"],
-                "cooldown":          _settings.get("cooldown", 4.0),
-                "require_camera":    _settings.get("require_camera", True),
-                "require_arduino":   _settings.get("require_arduino", True),
-                "sensor_gap":        _settings.get("sensor_gap", 1.0),
-            }
-        yield f"data: {json.dumps(init)}\n\n"
-
-        try:
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    payload = await asyncio.wait_for(q.get(), timeout=30)
-                    yield f"data: {json.dumps(payload)}\n\n"
-                except asyncio.TimeoutError:
-                    yield ": keepalive\n\n"
-        finally:
-            with _sse_lock:
-                _sse_clients.discard(q)
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
 
 class _BlowSettings(BaseModel):

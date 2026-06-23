@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from PIL import Image
 from pydantic import BaseModel
 
+import events as sse
 from blow_detection.router import router as blow_router, startup as blow_startup, shutdown as blow_shutdown
 from label_printer.convertor import build_instructions, process_for_preview
 from label_printer.frames import REGISTRY
@@ -350,6 +351,7 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(sse.router)
 app.include_router(blow_router)
 _templates = Jinja2Templates(directory="templates")
 
