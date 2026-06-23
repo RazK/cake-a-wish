@@ -33,7 +33,7 @@ _settings_lock = threading.Lock()
 
 
 def _load_settings() -> dict:
-    defaults = {"enabled": False, "sensitivity": 0.5, "arduino_threshold": None}
+    defaults = {"enabled": False, "sensitivity": 0.5, "arduino_threshold": None, "cooldown": 4.0}
     if SETTINGS_PATH.exists():
         try:
             return {**defaults, **json.loads(SETTINGS_PATH.read_text())}
@@ -146,7 +146,11 @@ _engine = BlowEngine(
     on_blow=lambda source, ts, _: _broadcast(
         {"event": "blow", "source": source, "ts": ts}
     ),
+    on_cooldown=lambda remaining: _broadcast(
+        {"event": "cooldown", "remaining": remaining}
+    ),
     blow_to_print=_settings["enabled"],
+    cooldown=_settings.get("cooldown", 4.0),
 )
 _arduino = ArduinoReader(_engine.arduino_queue)
 
@@ -208,12 +212,12 @@ async def blow_stream(request: Request):
         _sse_clients.add(q)
 
     async def generate():
-        # Send current settings once on connect so the client can initialise sliders
         with _settings_lock:
             init = {
                 "enabled":           _settings["enabled"],
                 "sensitivity":       _settings["sensitivity"],
                 "arduino_threshold": _settings["arduino_threshold"],
+                "cooldown":          _settings.get("cooldown", 4.0),
             }
         yield f"data: {json.dumps(init)}\n\n"
 
@@ -241,6 +245,7 @@ class _BlowSettings(BaseModel):
     enabled: Optional[bool] = None
     sensitivity: Optional[float] = None
     arduino_threshold: Optional[int] = None
+    cooldown: Optional[float] = None
 
 
 @router.post("/blow/settings")
@@ -253,5 +258,8 @@ async def blow_settings(body: _BlowSettings):
             _settings["sensitivity"] = body.sensitivity
         if body.arduino_threshold is not None:
             _settings["arduino_threshold"] = body.arduino_threshold
+        if body.cooldown is not None:
+            _settings["cooldown"] = body.cooldown
+            _engine.cooldown = body.cooldown
         _save_settings(_settings)
     return {"ok": True}

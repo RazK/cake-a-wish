@@ -505,13 +505,13 @@
         </div>
         <canvas id="cam-preview"></canvas>
         <div class="level-track" style="margin-top:8px">
-          <div class="level-fill"   id="cam-nw-fill"   style="background:var(--primary);width:0%"></div>
+          <div class="level-fill"   id="cam-nw-fill"   style="background:var(--muted);width:0%"></div>
           <div class="level-thresh" id="cam-nw-thresh" style="left:62%"></div>
         </div>
         <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="cam-nw-val">—</div>
         <div class="ctrl-row" style="margin-top:6px">
           <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">lip threshold</span>
-          <input type="range" id="adm-sens" min="20" max="80" value="50">
+          <input type="range" id="adm-sens" min="20" max="80" value="50" style="accent-color:var(--cyan)">
           <span id="adm-sens-val" style="display:none">0.50</span>
         </div>
       </div>
@@ -526,13 +526,13 @@
           </div>
         </div>
         <div class="level-track">
-          <div class="level-fill"   id="btp-level-fill"></div>
+          <div class="level-fill"   id="btp-level-fill" style="background:var(--muted)"></div>
           <div class="level-thresh" id="btp-level-thresh" style="left:80%"></div>
         </div>
         <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="ard-level-val">—</div>
         <div class="ctrl-row" style="margin-top:6px">
           <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">threshold</span>
-          <input type="range" id="adm-ard-thresh" min="1" max="200" value="95">
+          <input type="range" id="adm-ard-thresh" min="1" max="200" value="95" style="accent-color:var(--green)">
           <span id="adm-ard-thresh-val" style="display:none">95</span>
         </div>
       </div>
@@ -549,9 +549,19 @@
         <div style="margin-top:8px" class="blow-row is-combo">
           <span class="blow-lbl" style="font-size:0.66rem">Combined</span>
           <div class="blow-track">
-            <div class="blow-fill" id="adm-bar-comb" style="background:var(--green);width:0%"></div>
+            <div class="blow-fill" id="adm-bar-comb" style="background:var(--primary);width:0%"></div>
           </div>
         </div>
+        <div class="ctrl-row" style="margin-top:10px">
+          <span class="ctrl-lbl" style="font-size:0.65rem;color:var(--muted)">cooldown</span>
+          <input type="range" id="btp-cooldown" min="1" max="10" step="1" value="4" style="accent-color:var(--amber)">
+        </div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:2px;text-align:right" id="btp-cooldown-val">4s</div>
+        <div class="level-track" style="margin-top:6px">
+          <div class="level-fill"   id="btp-cooldown-fill"   style="background:var(--amber);width:0%;transition:width 0.12s linear"></div>
+          <div class="level-thresh" id="btp-cooldown-thresh" style="left:40%"></div>
+        </div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:4px;text-align:right" id="btp-cooldown-remaining">Ready</div>
       </div>
 
       </div><!-- .col-body -->
@@ -688,6 +698,7 @@ let _btpEnabled        = false;
 let _btpUserSet        = false;  // true once user has manually toggled
 let _brightnessVal     = 100;
 let _countdownTimer    = null;
+let _cooldownVal       = 4.0;    // seconds, synced from server
 
 // ── Blow to Print ─────────────────────────────────────────────────
 
@@ -737,15 +748,51 @@ _sensEl.addEventListener('change', () => {
 
 // Arduino threshold
 const _ardThreshEl = document.getElementById('adm-ard-thresh');
-_ardThreshEl.addEventListener('change', () => {
+_ardThreshEl.addEventListener('input', () => {
   const val = parseInt(_ardThreshEl.value);
   document.getElementById('adm-ard-thresh-val').textContent = val;
+  document.getElementById('btp-level-thresh').style.left =
+    Math.min(96, (val / 200) * 100) + '%';
+  const cur = document.getElementById('ard-level-val').textContent;
+  const lvl = cur === '—' ? '—' : cur.split(' / ')[0];
+  document.getElementById('ard-level-val').textContent = lvl + ' / ' + val;
+});
+_ardThreshEl.addEventListener('change', () => {
+  const val = parseInt(_ardThreshEl.value);
   fetch('/blow/settings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ arduino_threshold: val }),
   });
 });
+
+// Cooldown slider
+const _cooldownEl = document.getElementById('btp-cooldown');
+
+function _setCooldownTick(val) {
+  document.getElementById('btp-cooldown-thresh').style.left =
+    Math.min(96, (val / 10) * 100) + '%';
+}
+
+_cooldownEl.addEventListener('input', () => {
+  _cooldownVal = parseInt(_cooldownEl.value);
+  document.getElementById('btp-cooldown-val').textContent = _cooldownVal + 's';
+  _setCooldownTick(_cooldownVal);
+});
+_cooldownEl.addEventListener('change', () => {
+  fetch('/blow/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cooldown: parseInt(_cooldownEl.value) }),
+  });
+});
+
+function _applyCooldownRemaining(remaining) {
+  const pct = Math.max(0, (remaining / 10) * 100);
+  document.getElementById('btp-cooldown-fill').style.width = pct + '%';
+  document.getElementById('btp-cooldown-remaining').textContent =
+    remaining > 0 ? remaining.toFixed(1) + 's' : 'Ready';
+}
 
 // ── Custom overlays (header / footer / full) ─────────────────────
 // Each slot: { bitmap: ImageBitmap, name: string, align: 'full'|'left'|'center'|'right' }
@@ -940,17 +987,24 @@ const _sse = new EventSource('/blow/stream');
 _sse.onmessage = e => {
   let d; try { d = JSON.parse(e.data); } catch { return; }
 
+  if (d.event === 'cooldown') {
+    _applyCooldownRemaining(d.remaining);
+    return;
+  }
+
   if (d.arduino_level) {
     const al = d.arduino_level;
     const sliderThresh = parseInt(_ardThreshEl.value);
     const dispThresh = sliderThresh || al.threshold || 95;
+    window.ardBlowing = al.level >= dispThresh;
     document.getElementById('btp-level-fill').style.width =
       Math.min(100, (al.level / dispThresh) * 100) + '%';
+    document.getElementById('btp-level-fill').style.background =
+      window.ardBlowing ? '#3EBD87' : '#B8B0D0';
     document.getElementById('btp-level-thresh').style.left =
       Math.min(96, (dispThresh / 200) * 100) + '%';
     document.getElementById('ard-level-val').textContent =
       al.level + ' / ' + dispThresh;
-    window.ardBlowing = al.level >= dispThresh;
     _updateCombBar();
     return;
   }
@@ -970,6 +1024,12 @@ _sse.onmessage = e => {
   if (d.arduino_threshold !== undefined && d.arduino_threshold !== null) {
     _ardThreshEl.value = d.arduino_threshold;
     document.getElementById('adm-ard-thresh-val').textContent = d.arduino_threshold;
+  }
+  if (d.cooldown !== undefined) {
+    _cooldownVal = d.cooldown;
+    _cooldownEl.value = d.cooldown;
+    document.getElementById('btp-cooldown-val').textContent = d.cooldown + 's';
+    _setCooldownTick(d.cooldown);
   }
 };
 
@@ -1397,7 +1457,7 @@ function tick(now) {
     window.mpBlowing = blowing;
     _updateCombBar();
 
-    const col = blowing ? '#22D3EE' : '#7C6FF7';
+    const col = blowing ? '#22D3EE' : '#B8B0D0';
 
     // Live nw bar in Camera panel
     const nwPct = Math.min(100, (nw / 0.8) * 100);
