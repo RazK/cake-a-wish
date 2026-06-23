@@ -82,7 +82,13 @@ if errorlevel 1 (
 :: 5. Create logs directory
 if not exist "logs" mkdir logs
 
-:: 6. Create Desktop shortcut (.lnk via PowerShell — no terminal window)
+:: 6. Remove any legacy shortcuts from Desktop
+if exist "%USERPROFILE%\Desktop\Cake A Wish.bat" del /f "%USERPROFILE%\Desktop\Cake A Wish.bat"
+if exist "%USERPROFILE%\Desktop\Cake A Wish.url" del /f "%USERPROFILE%\Desktop\Cake A Wish.url"
+if exist "%USERPROFILE%\Desktop\Cake A Wish.lnk" del /f "%USERPROFILE%\Desktop\Cake A Wish.lnk"
+echo Cleaned up old Desktop shortcuts
+
+:: 8. Create Desktop shortcut (.lnk via PowerShell — no terminal window)
 set PYTHONW=%SCRIPT_DIR%.venv\Scripts\pythonw.exe
 set DESKTOP_LNK=%USERPROFILE%\Desktop\Cake A Wish.lnk
 if exist "%DESKTOP_LNK%" if not "%FORCE%"=="1" (
@@ -100,7 +106,7 @@ powershell -NoProfile -Command ^
 echo Desktop shortcut created
 :desktop_done
 
-:: 7. Register in Windows Startup folder (auto-run on boot)
+:: 9. Register in Windows Startup folder (auto-run on boot)
 set STARTUP_LNK=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Cake A Wish.lnk
 if exist "%STARTUP_LNK%" if not "%FORCE%"=="1" (
     echo Startup entry already registered
