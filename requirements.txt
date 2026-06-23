@@ -6,3 +6,4 @@ jinja2
 uvicorn[standard]
 pyserial
 python-multipart
+pywin32>=306; sys_platform == "win32"

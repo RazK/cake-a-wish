@@ -2,11 +2,18 @@
 
 import re
 import socket
+import sys
 import urllib.request
 from typing import Optional
 
 from brother_ql.backends.helpers import discover, send
 from brother_ql.reader import interpret_response
+
+if sys.platform == "win32":
+    try:
+        import win32print as _win32print
+    except ImportError:
+        _win32print = None
 
 # macOS refuses to let libusb detach its kernel driver (EACCES), but the
 # printer still works after claim_interface. Suppress only EACCES so the
@@ -29,6 +36,7 @@ except Exception:
 _INVALIDATE     = bytes(200)
 _INITIALIZE     = bytes([0x1B, 0x40])
 _STATUS_REQUEST = bytes([0x1B, 0x69, 0x53])
+_BROTHER_KEYWORDS = ("brother", "ql-")
 
 
 def _parse_http_status(html: str) -> Optional[dict]:
@@ -75,14 +83,26 @@ def _parse_http_status(html: str) -> Optional[dict]:
 
 
 def find_usb_printer() -> Optional[str]:
-    """Return the identifier of the first detected Brother USB printer, or None."""
+    """Return a USB printer identifier for the current platform, or None."""
+    if sys.platform == "win32":
+        if _win32print is None:
+            return None
+        for _, _, name, _ in _win32print.EnumPrinters(_win32print.PRINTER_ENUM_LOCAL):
+            if any(kw in name.lower() for kw in _BROTHER_KEYWORDS):
+                return name
+        return None
     try:
         devices = discover('pyusb')
-        if devices:
-            return devices[0]['identifier']
+        return devices[0]['identifier'] if devices else None
     except Exception:
-        pass
-    return None
+        return None
+
+
+def make_usb_conn(usb_id: str, model: str = "QL-820NWB"):
+    """Return the right USB connection class for the current platform."""
+    if sys.platform == "win32":
+        return WinUsbConnection(usb_id, model)
+    return LinuxUsbConnection(usb_id, model)
 
 
 class WifiConnection:
@@ -139,8 +159,8 @@ class WifiConnection:
         )
 
 
-class UsbConnection:
-    """Brother QL over USB (pyusb) with ESC i S bulk-transfer status query."""
+class LinuxUsbConnection:
+    """Brother QL over USB via pyusb (Mac / Linux)."""
 
     def __init__(self, identifier: str, model: str = "QL-820NWB"):
         self.identifier = identifier
@@ -174,3 +194,38 @@ class UsbConnection:
             if getattr(exc, 'errno', None) == 13:
                 raise RuntimeError("Printer busy — exit the LCD menu and try again") from exc
             raise
+
+
+class WinUsbConnection:
+    """Brother QL over Windows print spooler RAW port (win32print).
+
+    Works with the Brother driver Windows already has — no Zadig, no admin step.
+    Status is presence-only (no ESC i S via spooler).
+    """
+
+    def __init__(self, printer_name: str, model: str = "QL-820NWB"):
+        self.printer_name = printer_name
+        self.model        = model
+
+    def query_status(self) -> dict:
+        try:
+            h = _win32print.OpenPrinter(self.printer_name)
+            _win32print.ClosePrinter(h)
+            return {"connected": True, "status": None}
+        except Exception:
+            return {"connected": False, "status": None}
+
+    def send_job(self, instructions: bytes) -> dict:
+        try:
+            h = _win32print.OpenPrinter(self.printer_name)
+        except Exception as exc:
+            raise RuntimeError(f"Cannot open printer '{self.printer_name}'") from exc
+        try:
+            _win32print.StartDocPrinter(h, 1, ("label", None, "RAW"))
+            _win32print.StartPagePrinter(h)
+            _win32print.WritePrinter(h, instructions)
+            _win32print.EndPagePrinter(h)
+            _win32print.EndDocPrinter(h)
+        finally:
+            _win32print.ClosePrinter(h)
+        return {"did_print": True}
