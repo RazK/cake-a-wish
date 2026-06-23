@@ -98,13 +98,16 @@ def find_usb_printer() -> Optional[str]:
     if sys.platform == "win32":
         if _win32print is None:
             return None
-        names = []
-        for _, _, name, _ in _win32print.EnumPrinters(_win32print.PRINTER_ENUM_LOCAL):
-            names.append(name)
-            if any(kw in name.lower() for kw in _BROTHER_KEYWORDS):
-                logger.debug("find_usb_printer: found candidate printer '%s'", name)
-                return name
-        logger.debug("find_usb_printer: installed printers: %s", names)
+        try:
+            names = []
+            for _, _, name, _ in _win32print.EnumPrinters(_win32print.PRINTER_ENUM_LOCAL):
+                names.append(name)
+                if any(kw in name.lower() for kw in _BROTHER_KEYWORDS):
+                    logger.debug("find_usb_printer: found candidate printer '%s'", name)
+                    return name
+            logger.debug("find_usb_printer: installed printers: %s", names)
+        except Exception:
+            pass
         return None
     try:
         devices = discover('pyusb')
@@ -252,12 +255,20 @@ class WinUsbConnection:
             h = _win32print.OpenPrinter(self.printer_name)
         except Exception as exc:
             raise RuntimeError(f"Cannot open printer '{self.printer_name}'") from exc
+        doc_started = False
         try:
             _win32print.StartDocPrinter(h, 1, ("label", None, "RAW"))
+            doc_started = True
             _win32print.StartPagePrinter(h)
             _win32print.WritePrinter(h, instructions)
             _win32print.EndPagePrinter(h)
             _win32print.EndDocPrinter(h)
+            doc_started = False
         finally:
+            if doc_started:
+                try:
+                    _win32print.EndDocPrinter(h)
+                except Exception:
+                    pass
             _win32print.ClosePrinter(h)
         return {"did_print": True}
