@@ -1075,7 +1075,7 @@ async function _setPrinterMode(mode) {
 _pollPrinter();
 
 // ── SSE ───────────────────────────────────────────────────────────
-const _sse = new EventSource('/blow/stream');
+const _sse = new EventSource('/events');
 _sse.onmessage = e => {
   let d; try { d = JSON.parse(e.data); } catch { return; }
 
