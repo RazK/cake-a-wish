@@ -1,15 +1,15 @@
-"""Blow detection routes — mounted into web.py with one include_router call.
+"""Arduino + settings routes — mounted into web.py with one include_router call.
 
-Fusion + cooldown are client-side / at the /print actuator (issue #23); the
-server only streams Arduino telemetry and persists settings.
+Blow fusion + cooldown are client-side / at the /print actuator (issue #23); the
+server only streams Arduino telemetry, persists settings, and serves the model file.
 
 Endpoints:
-  POST /blow/event    — MediaPipe heartbeat (marks the camera "active"; no fusion)
-  POST /blow/settings — update sensitivity/cooldown/require flags, persists to JSON
+  POST /blow/settings              — update sensitivity/cooldown/require flags, persists to JSON
+  GET  /blow/face_landmarker.task  — serve the MediaPipe model to the browser
 
 Events pushed to /events SSE stream:
   arduino_level   — {level, threshold}   (client thresholds + fuses)
-  arduino/mediapipe status — via _status_loop
+  arduino status  — via _status_loop
   (cooldown is broadcast by the /print actuator, not here)
 """
 
@@ -131,12 +131,8 @@ class ArduinoReader:
 
 # ── SSE ───────────────────────────────────────────────────────────
 
-_mediapipe_last_seen: float = 0.0
-
-
 def _init_payload() -> dict:
     ard = _arduino.get_status()
-    active = (time.time() - _mediapipe_last_seen) < 30
     with _settings_lock:
         return {
             "sensitivity":       _settings["sensitivity"],
@@ -146,7 +142,6 @@ def _init_payload() -> dict:
             "require_arduino":   _settings.get("require_arduino", True),
             "sensor_gap":        _settings.get("sensor_gap", 1.0),
             "arduino":           {"connected": ard["connected"], "port": ard["port"]},
-            "mediapipe":         {"active": active},
         }
 
 
@@ -166,10 +161,8 @@ async def _status_loop():
     while True:
         await asyncio.sleep(1)
         ard = _arduino.get_status()
-        active = (time.time() - _mediapipe_last_seen) < 30
         sse.broadcast({
-            "arduino":   {"connected": ard["connected"], "port": ard["port"]},
-            "mediapipe": {"active": active},
+            "arduino": {"connected": ard["connected"], "port": ard["port"]},
         })
 
 
@@ -199,19 +192,6 @@ _TASK_FILE = Path(__file__).parent / "face_landmarker.task"
 @router.get("/blow/face_landmarker.task")
 async def face_landmarker_task():
     return FileResponse(_TASK_FILE, media_type="application/octet-stream")
-
-
-class _BlowEvent(BaseModel):
-    source: str
-    ts: float
-
-
-@router.post("/blow/event")
-async def blow_event(body: _BlowEvent):
-    # Now just a heartbeat so the server knows MediaPipe is active (fusion is client-side)
-    global _mediapipe_last_seen
-    _mediapipe_last_seen = time.time()
-    return {"ok": True}
 
 
 class _BlowSettings(BaseModel):

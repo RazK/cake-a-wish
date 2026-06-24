@@ -1807,12 +1807,7 @@ function tick(now) {
       consec = nw <= thr ? consec + 1 : 0;
       if (consec >= MIN_FRAMES) {
         mpState = 'blowing'; consec = 0;
-        _clientFusion('mediapipe');   // shadow-mode decision (issue #23)
-        fetch('/blow/event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source: 'mediapipe', ts: now / 1000 }),
-        });
+        _clientFusion('mediapipe');   // client-side blow decision (issue #23)
       }
     } else if (nw > thr) {
       mpState = 'ready'; consec = 0;
