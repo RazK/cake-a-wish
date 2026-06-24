@@ -142,24 +142,26 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-start;
+      justify-content: center;
       --kiosk-gap: clamp(16px, 4vh, 48px);
-      padding-top: var(--kiosk-gap);
-      padding-bottom: 16px;
+      padding: 16px 0;
     }
 
-    /* Title image at top */
+    /* Title image — floats above the (centered) card without pushing it */
     .stage-title {
-      flex-shrink: 0;
+      position: absolute;
+      top: clamp(16px, 5.5vh, 60px);
+      left: 50%;
+      transform: translateX(-50%);
       width: min(680px, 70%);
       height: auto;
+      z-index: 4;
       transition: opacity .5s ease;
     }
 
-    /* Balanced row: [ arrow side | polaroid | empty side ] */
+    /* Balanced row: [ arrow side | polaroid | empty side ] — fills the stage, centers the card */
     .frame-row {
       width: 100%;
-      margin-top: var(--kiosk-gap);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -223,8 +225,8 @@
 
     #canvas {
       display: block;
-      max-width: min(42vw, 38vh);
-      max-height: 46vh;
+      max-width: min(50.4vw, 45.6vh);
+      max-height: 55.2vh;
       width: auto;
       height: auto;
       border-radius: 8px;
@@ -246,7 +248,7 @@
       height: auto;
       opacity: 0;
       pointer-events: none;
-      transition: opacity .6s ease;
+      transition: opacity .8s ease;
       z-index: 10;
     }
     .result-text.show { opacity: 1; }
@@ -269,38 +271,11 @@
     }
     .trigger-circle:hover  { box-shadow: 0 8px 26px rgba(60,50,110,.32); }
     .trigger-circle:active { transform: translateX(-50%) scale(.92); }
-    .trigger-circle.hidden { opacity: 0; pointer-events: none; }
+    .trigger-circle.hidden   { opacity: 0; pointer-events: none; }
+    .trigger-circle.disabled { opacity: 0.35; pointer-events: none; }
 
     /* Helper for kiosk fade-out */
     .kiosk-fade { opacity: 0 !important; }
-
-    /* ── Action bar (center, below canvas) ─────────────────────── */
-    .action-bar {
-      flex-shrink: 0;
-      align-self: center;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      position: relative;
-      overflow: hidden;
-    }
-    #cd-progress {
-      display: none;
-      position: absolute;
-      inset: 0;
-      background: rgba(124,111,247,0.28);
-      transform-origin: left;
-      transform: scaleX(0);
-      pointer-events: none;
-      z-index: 0;
-    }
-    #cd-progress.active {
-      display: block;
-      animation: cd-fill var(--cd-dur, 3s) linear forwards;
-    }
-    #bar-live, #bar-captured, #bar-countdown { position: relative; z-index: 1; }
-    @keyframes cd-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
     /* ── Flash overlay (capture transition) ────────────────────── */
     #flash {
@@ -311,10 +286,11 @@
       pointer-events: none;
       z-index: 200;
     }
-    #flash.fire { animation: flash-anim .42s ease-out forwards; }
+    #flash.fire { animation: flash-anim .55s ease-out forwards; }
     @keyframes flash-anim {
       0%   { opacity: 0; }
-      12%  { opacity: .95; }
+      8%   { opacity: 1; }
+      30%  { opacity: 1; }
       100% { opacity: 0; }
     }
 
@@ -511,9 +487,6 @@
     .btn kbd { font:inherit; font-size:0.72em; opacity:0.6; background:rgba(0,0,0,0.08);
                border-radius:3px; padding:1px 5px; }
     .btn-primary kbd, .btn-danger kbd { background:rgba(255,255,255,0.2); opacity:0.85; }
-    #bar-live, #bar-captured, #bar-countdown { display:flex; align-items:center; gap:8px; }
-
-    #cd-num { font-family:'Handjet',monospace; font-size:1.1em; font-weight:700; }
 
     /* ── Right column 50/50 panels ────────────────────────────── */
     #right-col .col-body { overflow:hidden; }
@@ -698,25 +671,8 @@
       <!-- Screen 3: result text (hidden until print completes) -->
       <img class="result-text" id="result-text" src="/static/result-text.png" alt="">
 
-      <!-- White trigger circle — remove once breath sensor is wired -->
-      <button class="trigger-circle" id="trigger-circle" aria-label="Simulate blow" onclick="kioskTrigger()"></button>
-
-      <!-- Action bar -->
-      <div class="card action-bar" style="margin-top:12px;position:relative;z-index:3">
-        <div id="cd-progress"></div>
-        <div id="bar-live">
-          <button class="btn btn-outline" id="btn-capture" onclick="doCapture()">📷 Capture</button>
-          <button class="btn btn-outline" id="btn-quick-print" onclick="doQuickPrint()">🖨️ Quick Print</button>
-        </div>
-        <div id="bar-captured" style="display:none">
-          <button class="btn btn-outline" onclick="doRetake()">↩️ Retake</button>
-          <button class="btn btn-primary" id="btn-print" onclick="doPrint()">🖨️ Print</button>
-        </div>
-        <div id="bar-countdown" style="display:none">
-          <button class="btn btn-outline" style="color:var(--red);background:var(--surface)" onclick="doRetake()"><kbd>Space</kbd> ✕ Cancel</button>
-          <button class="btn btn-primary" onclick="skipCountdown()"><kbd>Enter</kbd> 🖨️ Print now &thinsp;<span id="cd-num">3</span></button>
-        </div>
-      </div>
+      <!-- Trigger dot — tap (or blow) to capture + print -->
+      <button class="trigger-circle" id="trigger-circle" aria-label="Capture and print" onclick="kioskTrigger()"></button>
 
       <!-- canvas-info kept hidden for JS compatibility -->
       <div class="canvas-info" id="canvas-info" style="display:none">62red · 696 × 1044 px</div>
@@ -878,7 +834,6 @@ window.printMarginRight  = 0;
 window.printMarginBottom = 0;
 let _photosSaving = false;
 let _brightnessVal       = 40;
-let _countdownTimer    = null;
 let _cooldownVal       = 4.0;    // seconds, synced from server
 let _requireCamera     = true;
 let _requireArduino    = true;
@@ -1223,16 +1178,10 @@ function _updatePrinter(d) {
   ).join('');
   if (detail.innerHTML !== newHtml) detail.innerHTML = newHtml;
 
-  // Print buttons — disabled + relabelled when printer offline
-  const _offline  = !d.connected;
-  const _offLabel = '🖨️ Not connected';
-  ['btn-print', 'btn-quick-print'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    btn.disabled    = _offline;
-    const _label    = id === 'btn-print' ? '🖨️ Print' : '🖨️ Quick Print';
-    btn.textContent = _offline ? _offLabel : _label;
-  });
+  // Trigger dot — disabled when the printer is offline
+  window._printerConnected = !!d.connected;
+  const tc = document.getElementById('trigger-circle');
+  if (tc) tc.classList.toggle('disabled', !d.connected);
 
   // Canvas resize
   const canvas = document.getElementById('canvas');
@@ -1278,7 +1227,7 @@ _sse.onmessage = e => {
   if (d.event === 'blow') {
     if (d.will_print) {
       _btpTriggerBar(d.source);
-      if (window.uiState === 'live') startCountdown();
+      kioskTrigger();
     } else if (_requireCamera && _requireArduino) {
       _btpArmBar(d.source);
     }
@@ -1349,10 +1298,9 @@ function _applyLiveFilter() {
 }
 
 function _setBarState(state) {
-  ['live', 'captured', 'countdown'].forEach(s => {
-    document.getElementById('bar-' + s).style.display = s === state ? '' : 'none';
-  });
-  document.getElementById('save-photo-btn').disabled = state !== 'captured';
+  // Action bar is gone; only the Save-photo button still keys off "captured"
+  const btn = document.getElementById('save-photo-btn');
+  if (btn) btn.disabled = state !== 'captured';
 }
 
 function setStatus(msg, cls) {
@@ -1379,10 +1327,10 @@ function _shiftedCanvas(src) {
   return out;
 }
 
-const RESULT_HOLD_MS = 3000;   // how long the result screen stays up after a print
+const RESULT_DELAY_MS = 1150;  // beat after the polaroid (1.25s slide) is gone, before the result fades in
+const RESULT_HOLD_MS  = 3000;  // how long the result screen stays up after a print
 
 async function _executePrint() {
-  _stopProgress();
   const src     = document.getElementById('canvas');
   const shifted = _shiftedCanvas(src);
   const dataUrl = shifted.toDataURL('image/jpeg', 0.92);
@@ -1395,6 +1343,7 @@ async function _executePrint() {
 
   // Screen 2 → polaroid slides off the bottom as it "prints" (canvas keeps
   // showing the printed frame: leave uiState as 'captured' during the slide)
+  const slideStart = performance.now();
   polaroid.classList.add('printing');
   setStatus('Printing…');
 
@@ -1416,23 +1365,28 @@ async function _executePrint() {
   }
 
   if (!ok) {
-    // Failure → bring the polaroid back, keep the captured frame for a retry
+    // Failure → slide the polaroid back and return to live (no retry bar anymore)
     polaroid.classList.remove('printing');
-    window.uiState = 'captured';
-    _setBarState('captured');
+    window.uiState = 'live';
+    window._capturedCameraImg = null;
+    _applyLiveFilter();
+    _kioskReset();
     setTimeout(() => setStatus(''), 2500);
     return;
   }
 
-  // Screen 3 → result text fades in, then auto-reset back to live
-  resultEl.classList.add('show');
-  setTimeout(_finishKioskPrint, RESULT_HOLD_MS);
+  // Screen 3 → wait until the polaroid has slid off (+ a beat), then fade the result in
+  const wait = Math.max(0, RESULT_DELAY_MS - (performance.now() - slideStart));
+  setTimeout(() => {
+    resultEl.classList.add('show');
+    setTimeout(_finishKioskPrint, RESULT_HOLD_MS);
+  }, wait);
 }
 
 function _finishKioskPrint() {
   const polaroid = document.getElementById('polaroid');
   const resultEl = document.getElementById('result-text');
-  // Switch the canvas back to the live feed before the polaroid slides home
+  // 1) Resume the photo first: live feed back + polaroid slides home, result fades out
   window.uiState = 'live';
   window._capturedCameraImg = null;
   _applyLiveFilter();
@@ -1440,23 +1394,30 @@ function _finishKioskPrint() {
   setStatus('');
   resultEl.classList.remove('show');
   polaroid.classList.remove('printing');
-  _kioskReset();
+  // 2) Only after the photo has slid back in, fade the title/candle/dot back
+  setTimeout(_kioskReset, 1200);
 }
 
 // ── Kiosk flow ────────────────────────────────────────────────────
 
 function kioskTrigger() {
   if (window.uiState !== 'live') return;
-  // Flash
+  if (!window._printerConnected) return;   // ignore taps/blows while the printer is offline
+  // Flash, and freeze the frame at the moment of the flash
   const flash = document.getElementById('flash');
   flash.classList.remove('fire');
   void flash.offsetWidth;
   flash.classList.add('fire');
-  // Fade out title + candle, hide trigger circle
-  document.getElementById('stage-title').classList.add('kiosk-fade');
-  document.getElementById('candle').classList.add('kiosk-fade');
-  document.getElementById('trigger-circle').classList.add('hidden');
-  doCapture();
+  window.freezeCamera();
+  window.uiState = 'captured';
+  _applyLiveFilter();
+  // Beat after the flash, then fade the texts out and start the print + slide-down
+  setTimeout(() => {
+    document.getElementById('stage-title').classList.add('kiosk-fade');
+    document.getElementById('candle').classList.add('kiosk-fade');
+    document.getElementById('trigger-circle').classList.add('hidden');
+    _executePrint();
+  }, 300);
 }
 
 function _kioskReset() {
@@ -1466,66 +1427,6 @@ function _kioskReset() {
 }
 
 // ── Public actions ────────────────────────────────────────────────
-
-function doCapture() {
-  if (window.uiState !== 'live') return;
-  window.freezeCamera();
-  window.uiState = 'captured';
-  _applyLiveFilter();
-  _setBarState('captured');
-}
-
-function startCountdown() {
-  if (window.uiState !== 'live') return;
-  window.freezeCamera();
-  window.uiState = 'countdown';
-  _applyLiveFilter();
-  let secs = 3;
-  document.getElementById('cd-num').textContent = secs;
-  const prog = document.getElementById('cd-progress');
-  prog.classList.remove('active');
-  void prog.offsetWidth;
-  prog.style.setProperty('--cd-dur', secs + 's');
-  prog.classList.add('active');
-  _setBarState('countdown');
-  _countdownTimer = setInterval(() => {
-    secs--;
-    document.getElementById('cd-num').textContent = secs;
-    if (secs <= 0) {
-      clearInterval(_countdownTimer); _countdownTimer = null;
-      _executePrint();
-    }
-  }, 1000);
-}
-
-function _stopProgress() {
-  document.getElementById('cd-progress').classList.remove('active');
-}
-
-function skipCountdown() {
-  if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
-  _stopProgress();
-  _executePrint();
-}
-
-function doQuickPrint() { startCountdown(); }
-
-function doRetake() {
-  if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
-  _stopProgress();
-  window._capturedCameraImg = null;
-  window.uiState = 'live';
-  _applyLiveFilter();
-  _setBarState('live');
-  setStatus('');
-  _kioskReset();
-}
-
-async function doPrint() {
-  if (window.uiState !== 'captured') return;
-  _setBarState('live');
-  await _executePrint();
-}
 
 async function savePhoto() {
   if (!window._capturedCameraImg) { setStatus('Nothing captured', 'err'); return; }
@@ -1544,11 +1445,8 @@ async function savePhoto() {
 // ── Keyboard shortcuts ────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && window.uiState === 'live') {
-    e.preventDefault(); doQuickPrint(); return;
+    e.preventDefault(); kioskTrigger();
   }
-  if (window.uiState !== 'countdown') return;
-  if (e.key === ' ')     { e.preventDefault(); doRetake(); }
-  else if (e.key === 'Enter') { e.preventDefault(); skipCountdown(); }
 });
 
 // ── Brightness slider ─────────────────────────────────────────────
@@ -1816,8 +1714,8 @@ try {
   await vid.play();
 } catch (err) {
   setCamPstat('err', 'camera unavailable');
-  const btnCap = document.getElementById('btn-capture');
-  if (btnCap) { btnCap.disabled = true; btnCap.textContent = '📷 No camera'; }
+  const tc = document.getElementById('trigger-circle');
+  if (tc) tc.classList.add('disabled');
   throw err;
 }
 
