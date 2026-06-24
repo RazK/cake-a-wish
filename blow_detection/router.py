@@ -193,6 +193,12 @@ async def _status_loop():
         })
 
 
+def current_cooldown() -> float:
+    """Cooldown (seconds) the print actuator enforces — single server-owned value."""
+    with _settings_lock:
+        return float(_settings.get("cooldown", 4.0))
+
+
 def startup():
     """Call from FastAPI lifespan — starts background threads and grabs the event loop."""
     sse.set_loop(asyncio.get_event_loop())

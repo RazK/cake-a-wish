@@ -19,7 +19,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 import events as sse
-from blow_detection.router import router as blow_router, startup as blow_startup, shutdown as blow_shutdown
+from blow_detection.router import router as blow_router, startup as blow_startup, shutdown as blow_shutdown, current_cooldown
 from label_printer.convertor import build_instructions, process_for_preview
 from label_printer.frames import REGISTRY
 from label_printer.manager import PrinterManager
@@ -181,8 +181,24 @@ class PrintRequest(BaseModel):
     raw_data: Optional[str] = None
 
 
+_last_print_ts = 0.0   # monotonic time of the last actuated print
+
+
 @app.post("/print")
 async def print_label(req: PrintRequest):
+    # Server owns the cooldown: the printer is the single shared resource, so this is
+    # the only place that can serialize simultaneous prints (e.g. two clients on one
+    # blow). A print landing within the cooldown window is dropped. Set the timestamp
+    # *before* any await so concurrent requests are caught. (issue #23)
+    global _last_print_ts
+    import time as _time
+    now = _time.monotonic()
+    since = now - _last_print_ts
+    if since < current_cooldown():
+        logger.warning("print within cooldown (%.2fs / %.2fs) — skipped", since, current_cooldown())
+        return {"ok": True, "deduped": True}
+    _last_print_ts = now
+
     img      = _decode_image(req.image_data)
     state    = _printer_manager.get_state()
     w, h     = state["label_w"], state["label_h"]

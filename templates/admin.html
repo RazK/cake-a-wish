@@ -838,6 +838,38 @@ let _cooldownVal       = 4.0;    // seconds, synced from server
 let _requireCamera     = true;
 let _requireArduino    = true;
 
+// ── Client-side fusion (issue #23) — SHADOW MODE: computes the print decision
+// locally and logs it for comparison; does NOT trigger yet.
+let _mpEdgeTs        = 0;   // performance.now() of last MediaPipe blow edge
+let _ardEdgeTs       = 0;   // performance.now() of last Arduino blow edge
+let _cooldownRemaining = 0; // seconds, from the server-transmitted cooldown
+
+function _clientFusion(source) {
+  const now = performance.now();
+  if (source === 'mediapipe') _mpEdgeTs = now; else _ardEdgeTs = now;
+
+  let wantPrint;
+  if (_requireCamera && _requireArduino) {
+    const otherTs = source === 'mediapipe' ? _ardEdgeTs : _mpEdgeTs;
+    const gap = otherTs ? (now - otherTs) : Infinity;
+    wantPrint = gap <= _sensorGap * 1000;
+  } else if (_requireCamera) {
+    wantPrint = source === 'mediapipe';
+  } else if (_requireArduino) {
+    wantPrint = source === 'arduino';
+  } else {
+    wantPrint = false;
+  }
+  if (!wantPrint) return;
+
+  const onCooldown = _cooldownRemaining > 0;
+  if (window.uiState !== 'live' || !window._printerConnected || onCooldown) return;
+  // Client owns the print decision now (issue #23). Clear edges so the partner
+  // source can't immediately re-fire for the same blow (mirrors BlowEngine).
+  _mpEdgeTs = 0; _ardEdgeTs = 0;
+  kioskTrigger();
+}
+
 // ── Photo saving toggle ───────────────────────────────────────────
 
 function photosSetSaving(on) {
@@ -1007,6 +1039,7 @@ function _btpTriggerBar(source) {
 }
 
 function _applyCooldownRemaining(remaining) {
+  _cooldownRemaining = remaining;   // tracked for the client fusion gate (issue #23)
   if (_btpTrigState !== 'triggered') return;
   const pct = Math.max(0, (remaining / _cooldownVal) * 100);
   document.getElementById('btp-cooldown-fill').style.width = pct + '%';
@@ -1225,9 +1258,10 @@ _sse.onmessage = e => {
   }
 
   if (d.event === 'blow') {
+    // Trigger now decided client-side (_clientFusion). Server 'blow' drives the
+    // gap/cooldown bar visuals only during the transition (issue #23, step 3).
     if (d.will_print) {
       _btpTriggerBar(d.source);
-      kioskTrigger();
     } else if (_requireCamera && _requireArduino) {
       _btpArmBar(d.source);
     }
@@ -1238,7 +1272,9 @@ _sse.onmessage = e => {
     const al = d.arduino_level;
     const sliderThresh = parseInt(_ardThreshEl.value);
     const dispThresh = sliderThresh || al.threshold || 95;
+    const _wasArdBlowing = window.ardBlowing;
     window.ardBlowing = al.level >= dispThresh;
+    if (!_wasArdBlowing && window.ardBlowing) _clientFusion('arduino');   // shadow-mode (issue #23)
     document.getElementById('btp-level-fill').style.width =
       Math.min(100, (al.level / 200) * 100) + '%';
     document.getElementById('btp-level-fill').style.background =
@@ -1782,6 +1818,7 @@ function tick(now) {
       consec = nw <= thr ? consec + 1 : 0;
       if (consec >= MIN_FRAMES) {
         mpState = 'blowing'; consec = 0;
+        _clientFusion('mediapipe');   // shadow-mode decision (issue #23)
         fetch('/blow/event', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
