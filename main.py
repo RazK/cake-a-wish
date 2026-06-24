@@ -19,7 +19,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 import events as sse
-from blow_detection.router import router as blow_router, startup as blow_startup, shutdown as blow_shutdown
+from blow_detection.router import router as blow_router, startup as blow_startup, shutdown as blow_shutdown, current_cooldown
 from label_printer.convertor import build_instructions, process_for_preview
 from label_printer.frames import REGISTRY
 from label_printer.manager import PrinterManager
@@ -181,8 +181,38 @@ class PrintRequest(BaseModel):
     raw_data: Optional[str] = None
 
 
+_last_print_ts = 0.0   # monotonic time of the last actuated print
+
+
+async def _broadcast_cooldown(duration: float):
+    """Tick the cooldown down to clients — single source of truth (the /print actuation)."""
+    import time as _time
+    end = _time.monotonic() + duration
+    while True:
+        remaining = max(0.0, end - _time.monotonic())
+        sse.broadcast({"event": "cooldown", "remaining": round(remaining, 2)})
+        if remaining <= 0:
+            break
+        await asyncio.sleep(0.1)
+
+
 @app.post("/print")
 async def print_label(req: PrintRequest):
+    # Server owns the cooldown: the printer is the single shared resource, so this is
+    # the only place that can serialize simultaneous prints (e.g. two clients on one
+    # blow). A print landing within the cooldown window is dropped. Set the timestamp
+    # *before* any await so concurrent requests are caught. (issue #23)
+    global _last_print_ts
+    import time as _time
+    now = _time.monotonic()
+    cd  = current_cooldown()
+    since = now - _last_print_ts
+    if since < cd:
+        logger.warning("print within cooldown (%.2fs / %.2fs) — skipped", since, cd)
+        return {"ok": True, "deduped": True}
+    _last_print_ts = now
+    asyncio.create_task(_broadcast_cooldown(cd))   # start the (broadcast) cooldown at actuation
+
     img      = _decode_image(req.image_data)
     state    = _printer_manager.get_state()
     w, h     = state["label_w"], state["label_h"]
@@ -248,7 +278,7 @@ async def get_saved_template(index: int):
     return _saved_templates[index]
 
 
-def _template_thumbnail(slots: dict) -> Optional[str]:
+def _template_thumbnail(slots: dict, margin_left: int = 0, margin_right: int = 0, margin_bottom: int = 0, brightness: int = 40) -> Optional[str]:
     TW, TH = 120, 180
     LABEL_W = 696
     base = Image.new("RGBA", (TW, TH), (45, 40, 65, 255))
@@ -277,6 +307,24 @@ def _template_thumbnail(slots: dict) -> Optional[str]:
                 base.paste(ov_r, (x, y), ov_r)
         except Exception:
             pass
+    # Brightness — same 1 + bv/100 factor the live photo filter uses, applied to the
+    # whole composite (matches margins' approach of a clearly-visible transform).
+    if brightness != 0:
+        from PIL import ImageEnhance
+        rgb  = ImageEnhance.Brightness(base.convert("RGB")).enhance(1 + brightness / 100)
+        base = rgb.convert("RGBA")
+    if margin_left:
+        ml_px = max(1, round(margin_left * scale))
+        base.paste(Image.new("RGBA", (ml_px, TH), (255, 255, 255, 200)), (0, 0))
+    if margin_right:
+        mr_px = max(1, round(margin_right * scale))
+        base.paste(Image.new("RGBA", (mr_px, TH), (255, 255, 255, 200)), (TW - mr_px, 0))
+    if margin_bottom > 0:
+        mb_px = max(1, round(margin_bottom * scale))
+        base.paste(Image.new("RGBA", (TW, mb_px), (255, 255, 255, 200)), (0, TH - mb_px))
+    elif margin_bottom < 0:
+        mb_px = max(1, round(abs(margin_bottom) * scale))
+        base.paste(Image.new("RGBA", (TW, mb_px), (220, 60, 60, 180)), (0, TH - mb_px))
     buf = io.BytesIO()
     base.convert("RGB").save(buf, format="JPEG", quality=82)
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
@@ -285,6 +333,10 @@ def _template_thumbnail(slots: dict) -> Optional[str]:
 class TemplateSave(BaseModel):
     name: str
     slots: dict
+    margin_left:   int = 0
+    margin_right:  int = 0
+    margin_bottom: int = 0
+    brightness:    int = 40
 
 
 @app.post("/saved-templates")
@@ -303,8 +355,12 @@ async def save_template(req: TemplateSave):
             processed[slot] = {**data, "data_url": "data:image/png;base64," + b64}
         except Exception:
             processed[slot] = data
-    thumb = await asyncio.to_thread(_template_thumbnail, processed)
-    _saved_templates.insert(0, {"name": req.name, "thumbnail": thumb, "slots": processed})
+    thumb = await asyncio.to_thread(_template_thumbnail, processed, req.margin_left, req.margin_right, req.margin_bottom, req.brightness)
+    _saved_templates.insert(0, {
+        "name": req.name, "thumbnail": thumb, "slots": processed,
+        "margin_left": req.margin_left, "margin_right": req.margin_right, "margin_bottom": req.margin_bottom,
+        "brightness": req.brightness,
+    })
     del _saved_templates[20:]
     _save_json(_TEMPLATES_FILE, _saved_templates)
     return {"ok": True}

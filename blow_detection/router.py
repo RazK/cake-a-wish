@@ -1,14 +1,16 @@
-"""Blow detection routes — mounted into web.py with one include_router call.
+"""Arduino + settings routes — mounted into web.py with one include_router call.
+
+Blow fusion + cooldown are client-side / at the /print actuator (issue #23); the
+server only streams Arduino telemetry, persists settings, and serves the model file.
 
 Endpoints:
-  POST /blow/event    — browser MediaPipe feeds a detected blow into BlowEngine
-  POST /blow/settings — update sensitivity/cooldown/require flags, persists to JSON
+  POST /blow/settings              — update sensitivity/cooldown/require flags, persists to JSON
+  GET  /blow/face_landmarker.task  — serve the MediaPipe model to the browser
 
 Events pushed to /events SSE stream:
-  blow            — {source, ts, will_print}
-  cooldown        — {remaining}
-  arduino_level   — {level, threshold}
-  arduino/mediapipe status — via _status_loop
+  arduino_level   — {level, threshold}   (client thresholds + fuses)
+  arduino status  — via _status_loop
+  (cooldown is broadcast by the /print actuator, not here)
 """
 
 import asyncio
@@ -27,7 +29,6 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 import events as sse
-from blow_detection.engine import BlowEngine
 
 logger = logging.getLogger("blow_router")
 
@@ -72,8 +73,7 @@ def _find_arduino_port() -> Optional[str]:
 
 
 class ArduinoReader:
-    def __init__(self, arduino_queue):
-        self._queue = arduino_queue
+    def __init__(self):
         self._thread: Optional[threading.Thread] = None
         self._running = False
         self._lock = threading.Lock()
@@ -105,7 +105,6 @@ class ArduinoReader:
             try:
                 ser = serial.Serial(port, 115200, timeout=1)
                 self._set(connected=True, port=port)
-                ard_state = "ready"   # "ready" | "blowing"
                 while self._running:
                     raw = ser.readline().decode("utf-8", errors="replace").strip()
                     if not raw:
@@ -119,16 +118,8 @@ class ArduinoReader:
                         except (ValueError, IndexError):
                             continue  # garbled line — skip
                         self._set(level=level, threshold=ard_thresh)
+                        # Stream raw level; the client thresholds + edge-detects + fuses (issue #23)
                         sse.broadcast({"arduino_level": {"level": level, "threshold": ard_thresh}})
-                        with _settings_lock:
-                            srv_thresh = _settings.get("arduino_threshold") or ard_thresh
-                        above = level >= srv_thresh
-                        if ard_state == "ready" and above:
-                            ard_state = "blowing"
-                            self._queue.put(time.time())
-                        elif ard_state == "blowing" and not above:
-                            ard_state = "ready"
-                    # Arduino's own BLOW signal ignored — server does its own detection
                 ser.close()
             except serial.SerialException:
                 pass  # device disconnected — reconnect loop handles it
@@ -140,12 +131,8 @@ class ArduinoReader:
 
 # ── SSE ───────────────────────────────────────────────────────────
 
-_mediapipe_last_seen: float = 0.0
-
-
 def _init_payload() -> dict:
     ard = _arduino.get_status()
-    active = (time.time() - _mediapipe_last_seen) < 30
     with _settings_lock:
         return {
             "sensitivity":       _settings["sensitivity"],
@@ -155,29 +142,17 @@ def _init_payload() -> dict:
             "require_arduino":   _settings.get("require_arduino", True),
             "sensor_gap":        _settings.get("sensor_gap", 1.0),
             "arduino":           {"connected": ard["connected"], "port": ard["port"]},
-            "mediapipe":         {"active": active},
         }
 
 
 sse.register_init_hook(_init_payload)
 
 
-# ── Engine + Arduino (module-level singletons) ────────────────────
+# ── Arduino reader (module-level singleton) ───────────────────────
+# Fusion + cooldown now live client-side / at the /print actuator (issue #23);
+# the server just streams Arduino telemetry and persists settings.
 
-_engine = BlowEngine(
-    on_blow=lambda source, ts, will_print: sse.broadcast(
-        {"event": "blow", "source": source, "ts": ts, "will_print": will_print}
-    ),
-    on_cooldown=lambda remaining: sse.broadcast(
-        {"event": "cooldown", "remaining": remaining}
-    ),
-    blow_to_print=True,
-    cooldown=_settings.get("cooldown", 4.0),
-    require_camera=_settings.get("require_camera", True),
-    require_arduino=_settings.get("require_arduino", True),
-    sensor_gap=_settings.get("sensor_gap", 1.0),
-)
-_arduino = ArduinoReader(_engine.arduino_queue)
+_arduino = ArduinoReader()
 
 
 # ── Startup / shutdown (called from web.py lifespan) ─────────────
@@ -186,24 +161,26 @@ async def _status_loop():
     while True:
         await asyncio.sleep(1)
         ard = _arduino.get_status()
-        active = (time.time() - _mediapipe_last_seen) < 30
         sse.broadcast({
-            "arduino":   {"connected": ard["connected"], "port": ard["port"]},
-            "mediapipe": {"active": active},
+            "arduino": {"connected": ard["connected"], "port": ard["port"]},
         })
+
+
+def current_cooldown() -> float:
+    """Cooldown (seconds) the print actuator enforces — single server-owned value."""
+    with _settings_lock:
+        return float(_settings.get("cooldown", 4.0))
 
 
 def startup():
     """Call from FastAPI lifespan — starts background threads and grabs the event loop."""
     sse.set_loop(asyncio.get_event_loop())
-    _engine.start()
     _arduino.start()
     asyncio.create_task(_status_loop())
 
 
 def shutdown():
     """Call from FastAPI lifespan — stops background threads."""
-    _engine.stop()
     _arduino.stop()
 
 
@@ -215,19 +192,6 @@ _TASK_FILE = Path(__file__).parent / "face_landmarker.task"
 @router.get("/blow/face_landmarker.task")
 async def face_landmarker_task():
     return FileResponse(_TASK_FILE, media_type="application/octet-stream")
-
-
-class _BlowEvent(BaseModel):
-    source: str
-    ts: float
-
-
-@router.post("/blow/event")
-async def blow_event(body: _BlowEvent):
-    global _mediapipe_last_seen
-    _mediapipe_last_seen = time.time()
-    _engine.mediapipe_queue.put(("mediapipe", body.ts))
-    return {"ok": True}
 
 
 class _BlowSettings(BaseModel):
@@ -248,16 +212,12 @@ async def blow_settings(body: _BlowSettings):
             _settings["arduino_threshold"] = body.arduino_threshold
         if body.cooldown is not None:
             _settings["cooldown"] = body.cooldown
-            _engine.cooldown = body.cooldown
         if body.require_camera is not None:
             _settings["require_camera"] = body.require_camera
-            _engine.require_camera = body.require_camera
         if body.require_arduino is not None:
             _settings["require_arduino"] = body.require_arduino
-            _engine.require_arduino = body.require_arduino
         if body.sensor_gap is not None:
             _settings["sensor_gap"] = body.sensor_gap
-            _engine.sensor_gap = body.sensor_gap
         snapshot = dict(_settings)
     _save_settings(snapshot)
     return {"ok": True}

@@ -36,7 +36,7 @@
       font-family: 'JetBrains Mono', monospace;
       font-size: 13px;
       color: var(--text);
-      background: linear-gradient(150deg, var(--bg-from), var(--bg-to)) fixed;
+      background: linear-gradient(135deg, #DCEAFB 0%, #E7EDFB 45%, #EFE7FB 75%, #F4E9FB 100%) fixed;
       display: flex;
       flex-direction: column;
     }
@@ -68,70 +68,65 @@
       border-left: 1px solid var(--border);
       background: rgba(255,255,255,0.30);
     }
-    .left-col.collapsed  { width: 0; }
+    /* Folded: column wipes to nothing — content is fixed-width + clipped (overflow:hidden) → smooth */
+    .left-col.collapsed,
     .right-col.collapsed { width: 0; }
 
-    /* ── Top bar ────────────────────────────────────────────────── */
-    .top-bar {
-      flex-shrink: 0;
-      height: 52px;
-      display: flex;
-      align-items: stretch;
-      border-bottom: 1px solid var(--border);
-      background: rgba(255,255,255,0.55);
-      backdrop-filter: blur(8px);
-    }
-
-    .col-head {
-      width: var(--col-width);
-      flex-shrink: 0;
+    /* Corner toggles: open/close the side menus (designer pattern) */
+    .corner-toggle {
+      position: fixed;
+      bottom: 16px;
+      width: 34px;
+      height: 34px;
       display: flex;
       align-items: center;
-      padding: 0 14px;
+      justify-content: center;
+      border: none;
+      background: transparent;
+      color: #6b6480;
+      opacity: 0.38;
+      cursor: pointer;
+      z-index: 100;
+      transition: opacity .15s ease;
+    }
+    .corner-toggle:hover { opacity: 0.85; }
+    .corner-toggle svg   { width: 22px; height: 22px; }
+    .corner-left  { left: 16px; }
+    .corner-right { right: 16px; }
+
+    /* In-column header (bottom): shows [fold-chevron · title] when the panel is open.
+       Lives inside the column, so it wipes away with it; the corner icon supplies the trailing icon. */
+    .col-head {
+      width: var(--col-width);   /* fixed → clips cleanly as the column wipes */
+      flex-shrink: 0;
+      height: 50px;              /* taller; bottom-padded so the title centers with the corner icon */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px 16px;      /* bottom 16px matches the corner icon's offset → vertical center aligns */
       cursor: pointer;
       user-select: none;
       overflow: hidden;
       position: relative;
-      transition: background 0.15s;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: .07em;
+      text-transform: uppercase; color: var(--sub); white-space: nowrap;
     }
-    .col-head:hover { background: rgba(124,111,247,0.08); }
-    .left-col-head  { border-right: 1px solid var(--border); }
-    .right-col-head { border-left:  1px solid var(--border); }
-
-    .col-head-icon    { font-size: 1rem; flex-shrink: 0; }
-    .col-head-label   { position: absolute; left: 0; right: 0; text-align: center;
-                        font-size: 0.7rem; font-weight: 700; letter-spacing: .07em;
-                        text-transform: uppercase; color: var(--sub);
-                        pointer-events: none; white-space: nowrap; }
-    .col-head-chevron { font-size: 0.82rem; color: var(--muted); flex-shrink: 0;
-                        transition: transform 0.22s cubic-bezier(.4,0,.2,1); }
-
-    .left-col-head  .col-head-chevron { margin-left: auto; }
-    .right-col-head .col-head-icon    { margin-left: auto; }
-
-    .left-col-head.collapsed  .col-head-chevron { transform: rotate(180deg); }
-    .right-col-head.collapsed .col-head-chevron { transform: rotate(-180deg); }
-
-    .app-title {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .header-title {
-      font-family: 'Handjet', monospace;
-      font-size: 1.6rem;
-      font-weight: 400;
-      letter-spacing: 0.01em;
-    }
+    /* Title centered across the column (and vertically aligned with the corner icon) */
+    .col-head .ttl  { position: absolute; inset: 0 0 16px 0; display: flex;
+                      align-items: center; justify-content: center; pointer-events: none; }
+    .col-head .fold { color: var(--muted); font-size: 0.9rem; flex-shrink: 0; }
+    .left-col-head       { padding-left: 46px; }   /* clear the floating gear icon */
+    .left-col-head .fold { margin-left: auto; }     /* chevron on the inner (right) side */
+    .right-col-head      { padding-right: 46px; }   /* clear the floating image icon */
 
     /* ── Column body (scrollable cards) ───────────────────────── */
     .col-body {
+      width: var(--col-width);   /* fixed width → clips cleanly as the column wipes */
       flex: 1;
       min-height: 0;
       display: flex;
       flex-direction: column;
-      padding: 12px 14px;
+      padding: 12px 14px 16px;
       gap: 10px;
       overflow-y: auto;
       overflow-x: hidden;
@@ -139,84 +134,165 @@
     }
     .col-body::-webkit-scrollbar { display: none; }
 
-    /* ── Canvas area (center column) ───────────────────────────── */
-    .canvas-area {
+    /* ── Stage (center column — kiosk view) ────────────────────── */
+    .stage {
       flex: 1;
-      display: flex;
-      flex-direction: column;
+      position: relative;
       overflow: hidden;
-      padding: 20px 20px 16px;
-      gap: 10px;
-    }
-
-    .canvas-wrap {
-      flex: 1;
-      min-height: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      overflow: hidden;
+      --kiosk-gap: clamp(16px, 4vh, 48px);
       padding: 16px 0;
     }
 
-    .label-frame {
-      flex-shrink: 0;
-      max-height: 65%;
+    /* Title image — floats above the (centered) card without pushing it */
+    .stage-title {
+      position: absolute;
+      top: clamp(16px, 5.5vh, 60px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(680px, 70%);
+      height: auto;
+      z-index: 4;
+      transition: opacity .5s ease;
+    }
+
+    /* Balanced row: [ arrow side | polaroid | empty side ] — fills the stage, centers the card */
+    .frame-row {
+      width: 100%;
       display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      min-height: 0;
+    }
+    .frame-side {
+      flex: 1 1 0;
+      min-width: 0;
+      align-self: stretch;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Arrow / candle image in the left gap */
+    .candle {
+      width: min(60%, 280px);
+      height: auto;
+      transition: opacity .5s ease;
+      pointer-events: none;
+      filter: drop-shadow(0 8px 18px rgba(80,70,140,.14));
+    }
+
+    /* Polaroid frame wrapping canvas */
+    .polaroid {
+      position: relative;
+      z-index: 2;
       background: #fff;
-      border-radius: 10px;
-      box-shadow: 0 6px 32px rgba(44, 38, 64, .22);
-      padding: 8px 6px;
+      border-radius: 16px;
+      box-shadow: 0 18px 50px rgba(60,50,110,.22);
+      padding: 14px 16px 0;
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      transition: transform 1.25s cubic-bezier(.55,.1,.6,1);
+      will-change: transform;
+    }
+    .polaroid.printing { transform: translateY(125vh); }
+
+    .label-frame {
+      position: relative;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      display: block;
+    }
+
+    .cam-placeholder {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      color: #9a96a6;
+      background: #fff;
+      text-align: center;
     }
 
     #canvas {
       display: block;
-      max-width: 100%;
-      max-height: 100%;
-      min-height: 0;
+      max-width: min(50.4vw, 45.6vh);
+      max-height: 55.2vh;
       width: auto;
       height: auto;
-      border-radius: 3px;
+      border-radius: 8px;
+      position: relative;
+      z-index: 1;
       image-rendering: pixelated;
     }
 
-    .canvas-info {
-      flex-shrink: 0;
-      text-align: center;
-      font-size: 0.7rem;
-      color: var(--sub);
-      letter-spacing: 0.02em;
-    }
 
-    /* ── Action bar (center, below canvas) ─────────────────────── */
-    .action-bar {
-      flex-shrink: 0;
-      align-self: center;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      position: relative;
-      overflow: hidden;
-    }
-    #cd-progress {
-      display: none;
+    .canvas-info { display: none; }
+
+    /* Result text image — screen 3, centered over stage */
+    .result-text {
       position: absolute;
-      inset: 0;
-      background: rgba(124,111,247,0.28);
-      transform-origin: left;
-      transform: scaleX(0);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: min(800px, 78%);
+      height: auto;
+      opacity: 0;
       pointer-events: none;
-      z-index: 0;
+      transition: opacity .8s ease;
+      z-index: 10;
     }
-    #cd-progress.active {
-      display: block;
-      animation: cd-fill var(--cd-dur, 3s) linear forwards;
+    .result-text.show { opacity: 1; }
+
+    /* White trigger circle — temporary breath-sensor bridge */
+    .trigger-circle {
+      position: absolute;
+      bottom: clamp(10px, 2vh, 20px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+      box-shadow: 0 6px 20px rgba(60,50,110,.25);
+      cursor: pointer;
+      z-index: 5;
+      transition: transform .12s ease, box-shadow .12s ease, opacity .35s ease;
     }
-    #bar-live, #bar-captured, #bar-countdown { position: relative; z-index: 1; }
-    @keyframes cd-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    .trigger-circle:hover  { box-shadow: 0 8px 26px rgba(60,50,110,.32); }
+    .trigger-circle:active { transform: translateX(-50%) scale(.92); }
+    .trigger-circle.hidden   { opacity: 0; pointer-events: none; }
+    .trigger-circle.disabled { opacity: 0.35; pointer-events: none; }
+
+    /* Helper for kiosk fade-out */
+    .kiosk-fade { opacity: 0 !important; }
+
+    /* ── Flash overlay (capture transition) ────────────────────── */
+    #flash {
+      position: fixed;
+      inset: 0;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 200;
+    }
+    #flash.fire { animation: flash-anim .55s ease-out forwards; }
+    @keyframes flash-anim {
+      0%   { opacity: 0; }
+      8%   { opacity: 1; }
+      30%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
 
     /* ── Card ──────────────────────────────────────────────────── */
     .card {
@@ -324,7 +400,7 @@
     .ctrl-lbl { font-size:0.69rem; color:var(--sub); flex-shrink:0; width:68px; }
     .ctrl-val { font-size:0.68rem; font-weight:600; color:var(--text);
                 width:36px; text-align:right; flex-shrink:0; overflow:hidden; }
-    input[type=range] { flex:1; accent-color:var(--primary); cursor:pointer; height:4px; }
+    input[type=range] { flex:1; min-width:0; accent-color:var(--primary); cursor:pointer; height:4px; }
     .num-input { width:44px; border:1.5px solid var(--border); border-radius:6px;
                  padding:3px 6px; font:inherit; font-size:0.72rem; color:var(--text);
                  background:var(--ghost); text-align:center; }
@@ -384,8 +460,7 @@
     /* ── Template slot ──────────────────────────────────────────── */
     .tmpl-slot      { display:flex; flex-direction:column; gap:4px; padding:3px 0; }
     .tmpl-slot-head { display:flex; align-items:center; gap:5px; min-height:20px; }
-    .tmpl-slot-name { font-size:0.68rem; font-weight:700; letter-spacing:.06em;
-                      text-transform:uppercase; color:var(--sub); flex:1; }
+    .tmpl-slot-name { font-size:0.69rem; color:var(--sub); flex:1; }
     .tmpl-file-name { font-size:0.66rem; color:var(--green); flex-shrink:1; min-width:0;
                       max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .tmpl-divider   { border:0; border-top:1px solid var(--border); margin:4px 0; }
@@ -412,9 +487,6 @@
     .btn kbd { font:inherit; font-size:0.72em; opacity:0.6; background:rgba(0,0,0,0.08);
                border-radius:3px; padding:1px 5px; }
     .btn-primary kbd, .btn-danger kbd { background:rgba(255,255,255,0.2); opacity:0.85; }
-    #bar-live, #bar-captured, #bar-countdown { display:flex; align-items:center; gap:8px; }
-
-    #cd-num { font-family:'Handjet',monospace; font-size:1.1em; font-weight:700; }
 
     /* ── Right column 50/50 panels ────────────────────────────── */
     #right-col .col-body { overflow:hidden; }
@@ -451,27 +523,13 @@
 </head>
 <body>
 
-  <!-- Top bar: always-visible column headers + app title -->
-  <div class="top-bar">
-    <div class="col-head left-col-head" id="left-col-head" onclick="toggleCol('left')">
-      <span class="col-head-icon">⚙️</span>
-      <span class="col-head-label">Hardware Settings</span>
-      <span class="col-head-chevron">‹</span>
-    </div>
-    <div class="app-title">
-      <span class="header-title">🎂 Cake A Wish 🖨️</span>
-    </div>
-    <div class="col-head right-col-head" id="right-col-head" onclick="toggleCol('right')">
-      <span class="col-head-chevron">›</span>
-      <span class="col-head-label">Photo Settings</span>
-      <span class="col-head-icon">🖼️</span>
-    </div>
-  </div>
+  <!-- Flash overlay (fires on capture) -->
+  <div id="flash"></div>
 
   <div class="body-row">
 
     <!-- Left — Hardware (foldable) -->
-    <div class="left-col" id="left-col">
+    <div class="left-col collapsed" id="left-col">
       <div class="col-body">
 
       <!-- Printer -->
@@ -580,45 +638,54 @@
       </div>
 
       </div><!-- .col-body -->
+
+      <div class="col-head left-col-head" onclick="toggleCol('left')">
+        <span class="ttl">Hardware Settings</span>
+        <span class="fold">‹</span>
+      </div>
     </div><!-- .left-col -->
 
-    <!-- Center — canvas + action bar -->
-    <div class="canvas-area">
+    <!-- Center — kiosk stage -->
+    <div class="stage" id="stage">
 
-      <div class="canvas-wrap">
-        <div class="label-frame">
-          <canvas id="canvas" width="696" height="1044"></canvas>
+      <!-- Screen 1: title -->
+      <img class="stage-title" id="stage-title" src="/static/Title.png" alt="Cake A Wish">
+
+      <!-- Balanced row: arrow | polaroid | empty -->
+      <div class="frame-row">
+        <div class="frame-side">
+          <img class="candle" id="candle" src="/static/Arrow.png" alt="">
         </div>
-        <div class="canvas-info" id="canvas-info">62red · 696 × 1044 px</div>
+
+        <!-- Polaroid frame (live camera → frozen photo) -->
+        <div class="polaroid" id="polaroid">
+          <div class="label-frame">
+            <div class="cam-placeholder" id="cam-placeholder">Camera loading…</div>
+            <canvas id="canvas" width="696" height="1044"></canvas>
+          </div>
+        </div>
+
+        <div class="frame-side" aria-hidden="true"></div>
       </div>
 
-      <div class="card action-bar">
-        <div id="cd-progress"></div>
-        <div id="bar-live">
-          <button class="btn btn-outline" id="btn-capture" onclick="doCapture()">📷 Capture</button>
-          <button class="btn btn-outline" id="btn-quick-print" onclick="doQuickPrint()">🖨️ Quick Print</button>
-        </div>
-        <div id="bar-captured" style="display:none">
-          <button class="btn btn-outline" onclick="doRetake()">↩️ Retake</button>
-          <button class="btn btn-primary" id="btn-print" onclick="doPrint()">🖨️ Print</button>
-        </div>
-        <div id="bar-countdown" style="display:none">
-          <button class="btn btn-outline" style="color:var(--red);background:var(--surface)" onclick="doRetake()"><kbd>Space</kbd> ✕ Cancel</button>
-          <button class="btn btn-primary" onclick="skipCountdown()"><kbd>Enter</kbd> 🖨️ Print now &thinsp;<span id="cd-num">3</span></button>
-        </div>
-      </div>
+      <!-- Screen 3: result text (hidden until print completes) -->
+      <img class="result-text" id="result-text" src="/static/result-text.png" alt="">
 
-    </div><!-- .canvas-area -->
+      <!-- Trigger dot — tap (or blow) to capture + print -->
+      <button class="trigger-circle" id="trigger-circle" aria-label="Capture and print" onclick="kioskTrigger()"></button>
+
+      <!-- canvas-info kept hidden for JS compatibility -->
+      <div class="canvas-info" id="canvas-info" style="display:none">62red · 696 × 1044 px</div>
+
+    </div><!-- .stage -->
 
     <!-- Right — Photo (foldable) -->
-    <div class="right-col" id="right-col">
+    <div class="right-col collapsed" id="right-col">
       <div class="col-body">
 
       <!-- ── Template card ── -->
-      <div class="card rc-panel">
+      <div class="card">
         <div class="card-label" style="margin-bottom:10px">Template</div>
-
-        <!-- Full -->
         <div class="tmpl-slot">
           <div class="tmpl-slot-head">
             <span class="tmpl-slot-name">Full</span>
@@ -628,10 +695,7 @@
             <button id="overlay-remove-full" class="act-btn act-btn--danger" style="display:none" onclick="removeOverlay('full')">✕</button>
           </div>
         </div>
-
         <div class="tmpl-divider"></div>
-
-        <!-- Header -->
         <div class="tmpl-slot">
           <div class="tmpl-slot-head">
             <span class="tmpl-slot-name">Header</span>
@@ -647,10 +711,7 @@
             <span class="align-opt"        data-val="right"  onclick="setAlign('header','right')">Right</span>
           </div>
         </div>
-
         <div class="tmpl-divider"></div>
-
-        <!-- Footer -->
         <div class="tmpl-slot">
           <div class="tmpl-slot-head">
             <span class="tmpl-slot-name">Footer</span>
@@ -666,9 +727,44 @@
             <span class="align-opt"        data-val="right"  onclick="setAlign('footer','right')">Right</span>
           </div>
         </div>
+      </div>
 
-        <button class="btn btn-outline" style="width:100%;margin-top:10px" onclick="saveTemplate()">💾 Save template</button>
+      <!-- ── Margins card ── -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom:10px">Margins</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="ctrl-row">
+            <span class="ctrl-lbl">Left</span>
+            <input type="range" id="margin-left-slider" min="0" max="200" value="0" oninput="window.printMarginLeft=parseInt(this.value);document.getElementById('margin-left-val').textContent=this.value">
+            <span class="ctrl-val" id="margin-left-val">0</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-lbl">Right</span>
+            <input type="range" id="margin-right-slider" min="0" max="200" value="0" style="transform:scaleX(-1)" oninput="window.printMarginRight=parseInt(this.value);document.getElementById('margin-right-val').textContent=this.value">
+            <span class="ctrl-val" id="margin-right-val">0</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-lbl">Bottom</span>
+            <input type="range" id="margin-bottom-slider" min="-150" max="100" value="0" oninput="window.printMarginBottom=parseInt(this.value);document.getElementById('margin-bottom-val').textContent=this.value">
+            <span class="ctrl-val" id="margin-bottom-val">0</span>
+          </div>
+        </div>
+      </div>
 
+      <!-- ── Color card ── -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom:10px">Color</div>
+        <div class="ctrl-row">
+          <span class="ctrl-lbl">Brightness</span>
+          <input type="range" id="brightness-slider" min="0" max="200" value="40" style="accent-color:#606060">
+          <span class="ctrl-val" id="brightness-val">0</span>
+        </div>
+      </div>
+
+      <!-- ── Presets card ── -->
+      <div class="card rc-panel">
+        <div class="card-label" style="margin-bottom:10px">Presets</div>
+        <button class="btn btn-outline" style="width:100%" onclick="saveTemplate()">💾 Save preset</button>
         <div class="gallery-grid" id="tmpl-gallery">
           <span class="gg-empty">No saved templates</span>
         </div>
@@ -676,44 +772,117 @@
 
       <!-- ── Photo card ── -->
       <div class="card rc-panel">
-        <div class="card-label">Photos</div>
-        <div class="ctrl-row">
-          <span class="ctrl-lbl">Brightness</span>
-          <input type="range" id="brightness-slider" min="0" max="200" value="100">
-          <span class="ctrl-val" id="brightness-val">0</span>
+        <div class="card-head" style="margin-bottom:0">
+          <div class="card-label" style="margin-bottom:0">Gallery</div>
+          <div class="tog-pill is-off" id="photos-toggle" onclick="photosSetSaving(!this.classList.contains('is-on'))">
+            <span class="tog-opt opt-on">Save</span>
+            <span class="tog-opt opt-off">Off</span>
+          </div>
         </div>
-        <button class="btn btn-outline" id="save-photo-btn" style="width:100%;margin-top:8px" onclick="savePhoto()" disabled>💾 Save photo</button>
-
-        <div class="gallery-grid" id="photo-gallery">
-          <span class="gg-empty">No saved photos</span>
+        <div id="photos-on-body" style="display:none;margin-top:8px">
+          <button class="btn btn-outline" id="save-photo-btn" style="width:100%" onclick="savePhoto()" disabled>💾 Save photo</button>
+          <div class="gallery-grid" id="photo-gallery">
+            <span class="gg-empty">No saved photos</span>
+          </div>
+        </div>
+        <div id="photos-off-body" style="padding:8px 0 4px">
+          <span style="font-size:0.72rem;color:var(--muted)">Photos are not saved to this device.</span>
         </div>
       </div>
 
       <div class="status-bar" id="status-bar"></div>
 
       </div><!-- .col-body -->
+
+      <div class="col-head right-col-head" onclick="toggleCol('right')">
+        <span class="fold">›</span>
+        <span class="ttl">Photo Settings</span>
+      </div>
     </div><!-- .right-col -->
 
   </div>
+
+  <!-- Corner toggles: open/close the side menus -->
+  <button class="corner-toggle corner-left" onclick="toggleCol('left')" aria-label="Hardware settings" title="Hardware settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  </button>
+  <button class="corner-toggle corner-right" onclick="toggleCol('right')" aria-label="Photo settings" title="Photo settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2"/>
+      <circle cx="8.5" cy="8.5" r="1.6"/>
+      <path d="M21 15l-5-5L5 21"/>
+    </svg>
+  </button>
 
 
 <script>
 // ── Column fold ───────────────────────────────────────────────────
 function toggleCol(side) {
   document.getElementById(side + '-col').classList.toggle('collapsed');
-  document.getElementById(side + '-col-head').classList.toggle('collapsed');
 }
 
 // ── Global state ──────────────────────────────────────────────────
 window.ardBlowing    = false;
 window.mpBlowing     = false;
 window.uiState       = 'live';
-window.brightnessVal = 100;
-let _brightnessVal     = 100;
-let _countdownTimer    = null;
+window.brightnessVal    = 40;
+window.printMarginLeft   = 0;
+window.printMarginRight  = 0;
+window.printMarginBottom = 0;
+let _photosSaving = false;
+let _brightnessVal       = 40;
 let _cooldownVal       = 4.0;    // seconds, synced from server
 let _requireCamera     = true;
 let _requireArduino    = true;
+
+// ── Client-side fusion (issue #23) — SHADOW MODE: computes the print decision
+// locally and logs it for comparison; does NOT trigger yet.
+let _mpEdgeTs        = 0;   // performance.now() of last MediaPipe blow edge
+let _ardEdgeTs       = 0;   // performance.now() of last Arduino blow edge
+let _cooldownRemaining = 0; // seconds, from the server-transmitted cooldown
+
+function _clientFusion(source) {
+  const now = performance.now();
+  if (source === 'mediapipe') _mpEdgeTs = now; else _ardEdgeTs = now;
+
+  let wantPrint;
+  if (_requireCamera && _requireArduino) {
+    const otherTs = source === 'mediapipe' ? _ardEdgeTs : _mpEdgeTs;
+    const gap = otherTs ? (now - otherTs) : Infinity;
+    wantPrint = gap <= _sensorGap * 1000;
+  } else if (_requireCamera) {
+    wantPrint = source === 'mediapipe';
+  } else if (_requireArduino) {
+    wantPrint = source === 'arduino';
+  } else {
+    wantPrint = false;
+  }
+  if (!wantPrint) {
+    // Both-required: one sensor fired — arm the gap bar while waiting for the other
+    if (_requireCamera && _requireArduino) _btpArmBar(source);
+    return;
+  }
+
+  const onCooldown = _cooldownRemaining > 0;
+  if (window.uiState !== 'live' || !window._printerConnected || onCooldown) return;
+  // Client owns the print decision now (issue #23). Clear edges so the partner
+  // source can't immediately re-fire for the same blow (mirrors the old engine).
+  _mpEdgeTs = 0; _ardEdgeTs = 0;
+  _btpTriggerBar(source);   // show the cooldown bar (the /print broadcast drives its countdown)
+  kioskTrigger();
+}
+
+// ── Photo saving toggle ───────────────────────────────────────────
+
+function photosSetSaving(on) {
+  _photosSaving = on;
+  document.getElementById('photos-toggle').className = 'tog-pill ' + (on ? 'is-on' : 'is-off');
+  document.getElementById('photos-on-body').style.display  = on ? '' : 'none';
+  document.getElementById('photos-off-body').style.display = on ? 'none' : '';
+}
 
 // ── Blow to Print ─────────────────────────────────────────────────
 
@@ -751,11 +920,6 @@ function _updateModeLabel() {
   document.getElementById('btp-cooldown-row').style.display = active ? '' : 'none';
   document.getElementById('btp-cooldown').style.accentColor = color;
   document.getElementById('btp-cooldown-fill').style.background = color;
-}
-
-function _updateCombBar() {
-  // Trigger is now driven server-side via the 'blow' SSE event (will_print flag).
-  // Require-flag fusion logic lives in BlowEngine._drain.
 }
 
 // Lip threshold (read by the MediaPipe module)
@@ -875,6 +1039,7 @@ function _btpTriggerBar(source) {
 }
 
 function _applyCooldownRemaining(remaining) {
+  _cooldownRemaining = remaining;   // tracked for the client fusion gate (issue #23)
   if (_btpTrigState !== 'triggered') return;
   const pct = Math.max(0, (remaining / _cooldownVal) * 100);
   document.getElementById('btp-cooldown-fill').style.width = pct + '%';
@@ -910,7 +1075,7 @@ function _setSlotUI(slot, name) {
   if (ap) ap.style.display = name ? '' : 'none';
 }
 
-async function _loadOverlayBlob(slot, blob, name) {
+async function _loadOverlayBlob(slot, blob, name, align = 'full') {
   if (slot === 'full') {
     if (window.customOverlays.header) { window.customOverlays.header = null; _setSlotUI('header', null); }
     if (window.customOverlays.footer) { window.customOverlays.footer = null; _setSlotUI('footer', null); }
@@ -918,16 +1083,48 @@ async function _loadOverlayBlob(slot, blob, name) {
     if (window.customOverlays.full) { window.customOverlays.full = null; _setSlotUI('full', null); }
   }
   const bitmap = await createImageBitmap(blob);
-  window.customOverlays[slot] = { bitmap, name, align: 'full' };
+  window.customOverlays[slot] = { bitmap, name, align };
   _setSlotUI(slot, name);
+  if (align !== 'full') {
+    document.querySelectorAll('#align-' + slot + ' .align-opt').forEach(el => {
+      el.classList.toggle('active', el.dataset.val === align);
+    });
+  }
 }
 
-// Load persisted overlays on page load
-['header', 'footer', 'full'].forEach(slot => {
-  fetch('/overlay/' + slot).then(async r => {
-    if (r.ok) await _loadOverlayBlob(slot, await r.blob(), slot + '.png');
-  }).catch(() => {});
-});
+// Restore loose per-slot overlays; footer falls back to the brand default
+function _loadLooseOverlays() {
+  ['header', 'footer', 'full'].forEach(slot => {
+    fetch('/overlay/' + slot).then(async r => {
+      if (r.ok) {
+        await _loadOverlayBlob(slot, await r.blob(), slot + '.png');
+      } else if (slot === 'footer') {
+        const fr = await fetch('/static/footer-logo.png');
+        if (fr.ok) await _loadOverlayBlob('footer', await fr.blob(), 'footer-logo.png');
+      }
+    }).catch(async () => {
+      if (slot === 'footer') {
+        try {
+          const fr = await fetch('/static/footer-logo.png');
+          if (fr.ok) await _loadOverlayBlob('footer', await fr.blob(), 'footer-logo.png');
+        } catch (_) {}
+      }
+    });
+  });
+}
+
+// Single boot path: prefer the most recently saved preset (overlays + margins +
+// brightness); only if none exists fall back to the loose per-slot overlays.
+async function _bootOverlays() {
+  try {
+    const r = await fetch('/saved-templates');
+    if (r.ok && (await r.json()).length) {
+      const res = await fetch('/saved-templates/0');
+      if (res.ok) { _applyTemplate(await res.json()); return; }
+    }
+  } catch (_) {}
+  _loadLooseOverlays();
+}
 
 ['header', 'footer', 'full'].forEach(slot => {
   document.getElementById('overlay-input-' + slot).addEventListener('change', async e => {
@@ -1014,16 +1211,10 @@ function _updatePrinter(d) {
   ).join('');
   if (detail.innerHTML !== newHtml) detail.innerHTML = newHtml;
 
-  // Print buttons — disabled + relabelled when printer offline
-  const _offline  = !d.connected;
-  const _offLabel = '🖨️ Not connected';
-  ['btn-print', 'btn-quick-print'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    btn.disabled    = _offline;
-    const _label    = id === 'btn-print' ? '🖨️ Print' : '🖨️ Quick Print';
-    btn.textContent = _offline ? _offLabel : _label;
-  });
+  // Trigger dot — disabled when the printer is offline
+  window._printerConnected = !!d.connected;
+  const tc = document.getElementById('trigger-circle');
+  if (tc) tc.classList.toggle('disabled', !d.connected);
 
   // Canvas resize
   const canvas = document.getElementById('canvas');
@@ -1066,30 +1257,22 @@ _sse.onmessage = e => {
     return;
   }
 
-  if (d.event === 'blow') {
-    if (d.will_print) {
-      _btpTriggerBar(d.source);
-      if (window.uiState === 'live') startCountdown();
-    } else if (_requireCamera && _requireArduino) {
-      _btpArmBar(d.source);
-    }
-    return;
-  }
 
   if (d.arduino_level) {
     const al = d.arduino_level;
     const sliderThresh = parseInt(_ardThreshEl.value);
     const dispThresh = sliderThresh || al.threshold || 95;
+    const _wasArdBlowing = window.ardBlowing;
     window.ardBlowing = al.level >= dispThresh;
+    if (!_wasArdBlowing && window.ardBlowing) _clientFusion('arduino');   // shadow-mode (issue #23)
     document.getElementById('btp-level-fill').style.width =
-      Math.min(100, (al.level / dispThresh) * 100) + '%';
+      Math.min(100, (al.level / 200) * 100) + '%';
     document.getElementById('btp-level-fill').style.background =
       window.ardBlowing ? '#3EBD87' : '#B8B0D0';
     document.getElementById('btp-level-thresh').style.left =
       Math.min(96, (dispThresh / 200) * 100) + '%';
     document.getElementById('ard-level-val').textContent =
       al.level + ' / ' + dispThresh;
-    _updateCombBar();
     return;
   }
 
@@ -1136,14 +1319,13 @@ _sse.onmessage = e => {
 // ── Live canvas filter ────────────────────────────────────────────
 
 function _applyLiveFilter() {
-  document.getElementById('canvas').style.filter = 'grayscale(1)';
+  document.getElementById('canvas').style.filter = '';
 }
 
 function _setBarState(state) {
-  ['live', 'captured', 'countdown'].forEach(s => {
-    document.getElementById('bar-' + s).style.display = s === state ? '' : 'none';
-  });
-  document.getElementById('save-photo-btn').disabled = state !== 'captured';
+  // Action bar is gone; only the Save-photo button still keys off "captured"
+  const btn = document.getElementById('save-photo-btn');
+  if (btn) btn.disabled = state !== 'captured';
 }
 
 function setStatus(msg, cls) {
@@ -1154,13 +1336,43 @@ function setStatus(msg, cls) {
 
 // ── Print flow ────────────────────────────────────────────────────
 
+function _shiftedCanvas(src) {
+  const L = Math.round(window.printMarginLeft   || 0);
+  const R = Math.round(window.printMarginRight  || 0);
+  const B = Math.round(window.printMarginBottom || 0);
+  if (!L && !R && !B) return src;
+  const out = document.createElement('canvas');
+  out.width = src.width; out.height = src.height;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  const dW = Math.max(1, out.width  - L - R);
+  const dH = Math.max(1, out.height - B);
+  ctx.drawImage(src, L, 0, dW, dH);
+  return out;
+}
+
+const RESULT_DELAY_MS = 1150;  // beat after the polaroid (1.25s slide) is gone, before the result fades in
+const RESULT_HOLD_MS  = 3000;  // how long the result screen stays up after a print
+
 async function _executePrint() {
-  _stopProgress();
-  const dataUrl = document.getElementById('canvas').toDataURL('image/jpeg', 0.92);
-  const rawData = window._capturedCameraImg
+  const src     = document.getElementById('canvas');
+  const shifted = _shiftedCanvas(src);
+  const dataUrl = shifted.toDataURL('image/jpeg', 0.92);
+  const rawData = (_photosSaving && window._capturedCameraImg)
     ? window._capturedCameraImg.toDataURL('image/jpeg', 0.92)
     : null;
+
+  const polaroid = document.getElementById('polaroid');
+  const resultEl = document.getElementById('result-text');
+
+  // Screen 2 → polaroid slides off the bottom as it "prints" (canvas keeps
+  // showing the printed frame: leave uiState as 'captured' during the slide)
+  const slideStart = performance.now();
+  polaroid.classList.add('printing');
   setStatus('Printing…');
+
+  let ok = false;
   try {
     const r = await fetch('/print', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1170,80 +1382,76 @@ async function _executePrint() {
       const body = await r.json().catch(() => ({}));
       throw new Error(body.detail || 'Print failed');
     }
+    ok = true;
     setStatus('Printed!', 'ok');
     _loadPhotos();
   } catch(e) {
     setStatus(e.message || 'Print error', 'err');
   }
-  setTimeout(() => {
-    setStatus('');
+
+  if (!ok) {
+    // Failure → slide the polaroid back and return to live (no retry bar anymore)
+    polaroid.classList.remove('printing');
     window.uiState = 'live';
     window._capturedCameraImg = null;
     _applyLiveFilter();
-    _setBarState('live');
-  }, 1500);
+    _kioskReset();
+    setTimeout(() => setStatus(''), 2500);
+    return;
+  }
+
+  // Screen 3 → wait until the polaroid has slid off (+ a beat), then fade the result in
+  const wait = Math.max(0, RESULT_DELAY_MS - (performance.now() - slideStart));
+  setTimeout(() => {
+    resultEl.classList.add('show');
+    setTimeout(_finishKioskPrint, RESULT_HOLD_MS);
+  }, wait);
 }
 
-// ── Public actions ────────────────────────────────────────────────
-
-function doCapture() {
-  if (window.uiState !== 'live') return;
-  window.freezeCamera();
-  window.uiState = 'captured';
-  _applyLiveFilter();
-  _setBarState('captured');
-}
-
-function startCountdown() {
-  if (window.uiState !== 'live') return;
-  window.freezeCamera();
-  window.uiState = 'countdown';
-  _applyLiveFilter();
-  let secs = 3;
-  document.getElementById('cd-num').textContent = secs;
-  const prog = document.getElementById('cd-progress');
-  prog.classList.remove('active');
-  void prog.offsetWidth;
-  prog.style.setProperty('--cd-dur', secs + 's');
-  prog.classList.add('active');
-  _setBarState('countdown');
-  _countdownTimer = setInterval(() => {
-    secs--;
-    document.getElementById('cd-num').textContent = secs;
-    if (secs <= 0) {
-      clearInterval(_countdownTimer); _countdownTimer = null;
-      _executePrint();
-    }
-  }, 1000);
-}
-
-function _stopProgress() {
-  document.getElementById('cd-progress').classList.remove('active');
-}
-
-function skipCountdown() {
-  if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
-  _stopProgress();
-  _executePrint();
-}
-
-function doQuickPrint() { startCountdown(); }
-
-function doRetake() {
-  if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
-  _stopProgress();
-  window._capturedCameraImg = null;
+function _finishKioskPrint() {
+  const polaroid = document.getElementById('polaroid');
+  const resultEl = document.getElementById('result-text');
+  // 1) Resume the photo first: live feed back + polaroid slides home, result fades out
   window.uiState = 'live';
+  window._capturedCameraImg = null;
   _applyLiveFilter();
   _setBarState('live');
   setStatus('');
+  resultEl.classList.remove('show');
+  polaroid.classList.remove('printing');
+  // 2) Only after the photo has slid back in, fade the title/candle/dot back
+  setTimeout(_kioskReset, 1200);
 }
 
-async function doPrint() {
-  if (window.uiState !== 'captured') return;
-  _setBarState('live');
-  await _executePrint();
+// ── Kiosk flow ────────────────────────────────────────────────────
+
+function kioskTrigger() {
+  if (window.uiState !== 'live') return;
+  if (!window._printerConnected) return;   // ignore taps/blows while the printer is offline
+  // Flash, and freeze the frame at the moment of the flash
+  const flash = document.getElementById('flash');
+  flash.classList.remove('fire');
+  void flash.offsetWidth;
+  flash.classList.add('fire');
+  window.freezeCamera();
+  window.uiState = 'captured';
+  _applyLiveFilter();
+  // Beat after the flash, then fade the texts out and start the print + slide-down
+  setTimeout(() => {
+    document.getElementById('stage-title').classList.add('kiosk-fade');
+    document.getElementById('candle').classList.add('kiosk-fade');
+    document.getElementById('trigger-circle').classList.add('hidden');
+    _executePrint();
+  }, 300);
 }
+
+function _kioskReset() {
+  document.getElementById('stage-title').classList.remove('kiosk-fade');
+  document.getElementById('candle').classList.remove('kiosk-fade');
+  document.getElementById('trigger-circle').classList.remove('hidden');
+}
+
+// ── Public actions ────────────────────────────────────────────────
 
 async function savePhoto() {
   if (!window._capturedCameraImg) { setStatus('Nothing captured', 'err'); return; }
@@ -1262,20 +1470,50 @@ async function savePhoto() {
 // ── Keyboard shortcuts ────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && window.uiState === 'live') {
-    e.preventDefault(); doQuickPrint(); return;
+    e.preventDefault(); kioskTrigger();
   }
-  if (window.uiState !== 'countdown') return;
-  if (e.key === ' ')     { e.preventDefault(); doRetake(); }
-  else if (e.key === 'Enter') { e.preventDefault(); skipCountdown(); }
 });
 
 // ── Brightness slider ─────────────────────────────────────────────
-document.getElementById('brightness-slider').addEventListener('input', function() {
-  _brightnessVal = parseInt(this.value);
-  window.brightnessVal = _brightnessVal;
-  const offset = _brightnessVal - 100;
+function _updateBrightnessThumb(val) {
+  const g = Math.round(50 + (val / 200) * 195);
+  document.getElementById('brightness-slider').style.accentColor = `rgb(${g},${g},${g})`;
+}
+function _setBrightness(val) {
+  val = val | 0;
+  _brightnessVal = val;
+  window.brightnessVal = val;
+  const sl = document.getElementById('brightness-slider');
+  if (sl) sl.value = val;
+  const offset = val - 100;
   document.getElementById('brightness-val').textContent = (offset > 0 ? '+' : '') + offset;
+  _updateBrightnessThumb(val);
+}
+window._setBrightness = _setBrightness;
+document.getElementById('brightness-slider').addEventListener('input', function() {
+  _setBrightness(parseInt(this.value));
 });
+_updateBrightnessThumb(40);
+
+function _updateMargins(L, R, B) {
+  B = (B === undefined ? 0 : B) | 0;
+  window.printMarginLeft   = L | 0;
+  window.printMarginRight  = R | 0;
+  window.printMarginBottom = B;
+  const ls = document.getElementById('margin-left-slider');
+  const rs = document.getElementById('margin-right-slider');
+  const bs = document.getElementById('margin-bottom-slider');
+  const lv = document.getElementById('margin-left-val');
+  const rv = document.getElementById('margin-right-val');
+  const bv = document.getElementById('margin-bottom-val');
+  if (ls) ls.value = L | 0;
+  if (rs) rs.value = R | 0;
+  if (bs) bs.value = B;
+  if (lv) lv.textContent = L | 0;
+  if (rv) rv.textContent = R | 0;
+  if (bv) bv.textContent = B;
+}
+window._updateMargins = _updateMargins;
 
 // ── Template gallery ──────────────────────────────────────────────
 
@@ -1300,18 +1538,27 @@ function _slotToPayload(slot) {
 async function saveTemplate() {
   const { header, footer, full } = window.customOverlays;
   if (!header && !footer && !full) { setStatus('No overlay loaded', 'err'); return; }
+  const mL = window.printMarginLeft   || 0;
+  const mR = window.printMarginRight  || 0;
+  const mB = window.printMarginBottom || 0;
+  const br = window.brightnessVal != null ? window.brightnessVal : 40;
   try {
-    await fetch('/saved-templates', {
+    const r = await fetch('/saved-templates', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: _templateAutoName(),
         slots: { full: _slotToPayload('full'), header: _slotToPayload('header'), footer: _slotToPayload('footer') },
+        margin_left:   mL,
+        margin_right:  mR,
+        margin_bottom: mB,
+        brightness:    br,
       }),
     });
-    setStatus('Template saved', 'ok');
+    if (!r.ok) { const t = await r.text(); setStatus('Save failed ' + r.status + ': ' + t.slice(0,80), 'err'); return; }
+    setStatus('Saved — L:' + mL + ' R:' + mR + ' B:' + mB, 'ok');
     _loadSavedTemplates();
-    setTimeout(() => setStatus(''), 1500);
-  } catch { setStatus('Save failed', 'err'); }
+    setTimeout(() => setStatus(''), 2500);
+  } catch(e) { setStatus('Save error: ' + e.message, 'err'); }
 }
 
 async function _loadSavedTemplates() {
@@ -1351,13 +1598,22 @@ async function _loadSavedTemplates() {
 }
 
 async function _applyTemplate(tmpl) {
+  // Margins + brightness are independent of overlay loading — apply immediately
+  window._updateMargins(tmpl.margin_left || 0, tmpl.margin_right || 0, tmpl.margin_bottom || 0);
+  window._setBrightness(tmpl.brightness != null ? tmpl.brightness : 40);
+
   // Pre-load all bitmaps before touching current state → no flicker
   const built = {};
   for (const slot of ['full', 'header', 'footer']) {
     const data = tmpl.slots[slot];
     if (!data) { built[slot] = null; continue; }
-    const blob = await (await fetch(data.data_url)).blob();
-    built[slot] = { bitmap: await createImageBitmap(blob), name: data.original_name, align: data.align, blob };
+    try {
+      const blob = await (await fetch(data.data_url)).blob();
+      built[slot] = { bitmap: await createImageBitmap(blob), name: data.original_name, align: data.align, blob };
+    } catch (e) {
+      console.error('_applyTemplate: failed to load slot', slot, e);
+      built[slot] = null;
+    }
   }
   // Atomic swap
   ['full', 'header', 'footer'].forEach(s => {
@@ -1368,6 +1624,7 @@ async function _applyTemplate(tmpl) {
         el.classList.toggle('active', el.dataset.val === built[s].align));
     }
   });
+
   // Persist overlay files in background (survives page reload)
   for (const slot of ['full', 'header', 'footer']) {
     if (!built[slot]) { fetch('/overlay/' + slot, { method: 'DELETE' }).catch(() => {}); continue; }
@@ -1432,6 +1689,7 @@ async function _loadPhotoItem(item) {
 _applyLiveFilter();
 _setBarState('live');
 _loadSavedTemplates();
+_bootOverlays();
 _loadPhotos();
 </script>
 
@@ -1481,8 +1739,8 @@ try {
   await vid.play();
 } catch (err) {
   setCamPstat('err', 'camera unavailable');
-  const btnCap = document.getElementById('btn-capture');
-  if (btnCap) { btnCap.disabled = true; btnCap.textContent = '📷 No camera'; }
+  const tc = document.getElementById('trigger-circle');
+  if (tc) tc.classList.add('disabled');
   throw err;
 }
 
@@ -1505,8 +1763,10 @@ function _drawSlotBitmap(ctx, slot, cW, cH, anchor) {
   let dX = 0;
   if (slot.align === 'center') dX = Math.round((cW - dW) / 2);
   else if (slot.align === 'right') dX = cW - dW;
-  ctx.drawImage(bm, dX, anchor === 'top' ? 0 : cH - dH, dW, dH);
+  const dY = anchor === 'top' ? 0 : cH - dH;
+  ctx.drawImage(bm, dX, dY, dW, dH);
 }
+
 
 function _coverCropMirror(ctx, src, srcW, srcH, dstX, dstY, dstW, dstH) {
   if (dstW <= 0 || dstH <= 0) return;
@@ -1547,11 +1807,7 @@ function tick(now) {
       consec = nw <= thr ? consec + 1 : 0;
       if (consec >= MIN_FRAMES) {
         mpState = 'blowing'; consec = 0;
-        fetch('/blow/event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source: 'mediapipe', ts: now / 1000 }),
-        });
+        _clientFusion('mediapipe');   // client-side blow decision (issue #23)
       }
     } else if (nw > thr) {
       mpState = 'ready'; consec = 0;
@@ -1559,7 +1815,6 @@ function tick(now) {
 
     const blowing = mpState === 'blowing';
     window.mpBlowing = blowing;
-    _updateCombBar();
 
     const col = blowing ? '#22D3EE' : '#B8B0D0';
 
@@ -1628,7 +1883,6 @@ function tick(now) {
   } else {
     mpState = 'ready'; consec = 0;
     window.mpBlowing = false;
-    _updateCombBar();
     setCamPstat('', 'no face');
     document.getElementById('cam-nw-fill').style.width = '0%';
     document.getElementById('cam-nw-val').textContent  = '—';
