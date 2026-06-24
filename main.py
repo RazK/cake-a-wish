@@ -184,6 +184,18 @@ class PrintRequest(BaseModel):
 _last_print_ts = 0.0   # monotonic time of the last actuated print
 
 
+async def _broadcast_cooldown(duration: float):
+    """Tick the cooldown down to clients — single source of truth (the /print actuation)."""
+    import time as _time
+    end = _time.monotonic() + duration
+    while True:
+        remaining = max(0.0, end - _time.monotonic())
+        sse.broadcast({"event": "cooldown", "remaining": round(remaining, 2)})
+        if remaining <= 0:
+            break
+        await asyncio.sleep(0.1)
+
+
 @app.post("/print")
 async def print_label(req: PrintRequest):
     # Server owns the cooldown: the printer is the single shared resource, so this is
@@ -193,11 +205,13 @@ async def print_label(req: PrintRequest):
     global _last_print_ts
     import time as _time
     now = _time.monotonic()
+    cd  = current_cooldown()
     since = now - _last_print_ts
-    if since < current_cooldown():
-        logger.warning("print within cooldown (%.2fs / %.2fs) — skipped", since, current_cooldown())
+    if since < cd:
+        logger.warning("print within cooldown (%.2fs / %.2fs) — skipped", since, cd)
         return {"ok": True, "deduped": True}
     _last_print_ts = now
+    asyncio.create_task(_broadcast_cooldown(cd))   # start the (broadcast) cooldown at actuation
 
     img      = _decode_image(req.image_data)
     state    = _printer_manager.get_state()

@@ -860,13 +860,18 @@ function _clientFusion(source) {
   } else {
     wantPrint = false;
   }
-  if (!wantPrint) return;
+  if (!wantPrint) {
+    // Both-required: one sensor fired — arm the gap bar while waiting for the other
+    if (_requireCamera && _requireArduino) _btpArmBar(source);
+    return;
+  }
 
   const onCooldown = _cooldownRemaining > 0;
   if (window.uiState !== 'live' || !window._printerConnected || onCooldown) return;
   // Client owns the print decision now (issue #23). Clear edges so the partner
-  // source can't immediately re-fire for the same blow (mirrors BlowEngine).
+  // source can't immediately re-fire for the same blow (mirrors the old engine).
   _mpEdgeTs = 0; _ardEdgeTs = 0;
+  _btpTriggerBar(source);   // show the cooldown bar (the /print broadcast drives its countdown)
   kioskTrigger();
 }
 
@@ -915,11 +920,6 @@ function _updateModeLabel() {
   document.getElementById('btp-cooldown-row').style.display = active ? '' : 'none';
   document.getElementById('btp-cooldown').style.accentColor = color;
   document.getElementById('btp-cooldown-fill').style.background = color;
-}
-
-function _updateCombBar() {
-  // Trigger is now driven server-side via the 'blow' SSE event (will_print flag).
-  // Require-flag fusion logic lives in BlowEngine._drain.
 }
 
 // Lip threshold (read by the MediaPipe module)
@@ -1257,16 +1257,6 @@ _sse.onmessage = e => {
     return;
   }
 
-  if (d.event === 'blow') {
-    // Trigger now decided client-side (_clientFusion). Server 'blow' drives the
-    // gap/cooldown bar visuals only during the transition (issue #23, step 3).
-    if (d.will_print) {
-      _btpTriggerBar(d.source);
-    } else if (_requireCamera && _requireArduino) {
-      _btpArmBar(d.source);
-    }
-    return;
-  }
 
   if (d.arduino_level) {
     const al = d.arduino_level;
@@ -1283,7 +1273,6 @@ _sse.onmessage = e => {
       Math.min(96, (dispThresh / 200) * 100) + '%';
     document.getElementById('ard-level-val').textContent =
       al.level + ' / ' + dispThresh;
-    _updateCombBar();
     return;
   }
 
@@ -1831,7 +1820,6 @@ function tick(now) {
 
     const blowing = mpState === 'blowing';
     window.mpBlowing = blowing;
-    _updateCombBar();
 
     const col = blowing ? '#22D3EE' : '#B8B0D0';
 
@@ -1900,7 +1888,6 @@ function tick(now) {
   } else {
     mpState = 'ready'; consec = 0;
     window.mpBlowing = false;
-    _updateCombBar();
     setCamPstat('', 'no face');
     document.getElementById('cam-nw-fill').style.width = '0%';
     document.getElementById('cam-nw-val').textContent  = '—';
